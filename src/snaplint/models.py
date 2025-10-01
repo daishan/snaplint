@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Annotated, Any, Literal, Mapping
+from typing import Annotated, Literal, Mapping
 
 from pydantic import (
     BaseModel,
@@ -15,7 +15,7 @@ from pydantic.functional_validators import AfterValidator
 # Custom Types
 
 
-def validate_normalized_path(v: Any) -> str:
+def validate_normalized_path(v: str) -> str:
     if not isinstance(v, str):
         raise TypeError("string required")
     # On Windows, drive letters are case-insensitive, so normalize to lower

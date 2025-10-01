@@ -5,7 +5,7 @@ import subprocess
 from snaplint.models import DiffResult, IssueKey, IssueSet
 
 
-def _get_sort_key(k):
+def _get_sort_key(k: IssueKey) -> tuple[str, int, int, str, str]:
     return k.path, k.line, k.column, k.code or "", k.message or ""
 
 
