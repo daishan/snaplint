@@ -97,14 +97,37 @@ def test_diff_empty_current():
     assert diff.unchanged_count == 0
 
 
-def test_diff_moved_issues():
-    snapshot_lines = ["file.py:2:1: E001 my error"]
-    current_lines = ["file.py:3:1: E001 my error"]
+import os
+import subprocess
+from pathlib import Path
 
+def test_diff_moved_issues(tmp_path: Path):
+    # Create a git repository
+    os.chdir(tmp_path)
+    subprocess.run(["git", "init"])
+    subprocess.run(["git", "config", "user.name", "tester"])
+    subprocess.run(["git", "config", "user.email", "tester@example.com"])
+
+    # Create the initial file
+    file_path = tmp_path / "file.py"
+    file_path.write_text("line1\nline2\nline3\n")
+    subprocess.run(["git", "add", "file.py"])
+    subprocess.run(["git", "commit", "-m", "initial commit"])
+    subprocess.run(["git", "tag", "v1"])
+
+    # Create the snapshot
+    snapshot_lines = ["file.py:2:1: E001 my error"]
     snapshot_set = build_issue_set(snapshot_lines)
+
+    # Modify the file
+    file_path.write_text("line1\nline1.5\nline2\nline3\n")
+
+    # Create the current issues
+    current_lines = ["file.py:3:1: E001 my error"]
     current_set = build_issue_set(current_lines)
 
-    diff = diff_issue_sets(current=current_set, snapshot=snapshot_set, ref="main")
+    # Run the diff
+    diff = diff_issue_sets(current=current_set, snapshot=snapshot_set, ref="v1")
 
     assert len(diff.moved) == 1
     assert len(diff.added) == 0
@@ -114,3 +137,66 @@ def test_diff_moved_issues():
     old_key, new_key = diff.moved[0]
     assert old_key.line == 2
     assert new_key.line == 3
+
+def test_diff_multiple_moved_issues(tmp_path: Path):
+    # Create a git repository
+    os.chdir(tmp_path)
+    subprocess.run(["git", "init"])
+    subprocess.run(["git", "config", "user.name", "tester"])
+    subprocess.run(["git", "config", "user.email", "tester@example.com"])
+
+    # Create the initial file
+    file_path = tmp_path / "file.py"
+    file_path.write_text(
+        "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n"
+    )
+    subprocess.run(["git", "add", "file.py"])
+    subprocess.run(["git", "commit", "-m", "initial commit"])
+    subprocess.run(["git", "tag", "v1"])
+
+    # Create the snapshot
+    snapshot_lines = [
+        "file.py:2:1: E001 error1",
+        "file.py:4:1: E002 error2",
+        "file.py:8:1: E003 error3",
+    ]
+    snapshot_set = build_issue_set(snapshot_lines)
+
+    # Modify the file
+    file_path.write_text(
+        "line1\ninserted1\ninserted2\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n"
+    )
+
+    # Create the current issues
+    current_lines = [
+        "file.py:4:1: E001 error1",
+        "file.py:6:1: E002 error2",
+        "file.py:10:1: E003 error3",
+    ]
+    current_set = build_issue_set(current_lines)
+
+    # Run the diff
+    diff = diff_issue_sets(current=current_set, snapshot=snapshot_set, ref="v1")
+
+    assert len(diff.moved) == 3
+    assert len(diff.added) == 0
+    assert len(diff.removed) == 0
+    assert diff.unchanged_count == 0
+
+    # Sort moved issues for stable assertion
+    moved = sorted(diff.moved, key=lambda pair: pair[0].line)
+
+    # error1 moved from 2 to 4
+    old_key, new_key = moved[0]
+    assert old_key.line == 2
+    assert new_key.line == 4
+
+    # error2 moved from 4 to 6
+    old_key, new_key = moved[1]
+    assert old_key.line == 4
+    assert new_key.line == 6
+
+    # error3 moved from 8 to 10
+    old_key, new_key = moved[2]
+    assert old_key.line == 8
+    assert new_key.line == 10

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import difflib
+import subprocess
 
 from snaplint.models import DiffResult, IssueSet
 
@@ -31,25 +31,32 @@ def diff_issue_sets(
         for added_key in added_keys:
             lookup_key = (added_key.path, added_key.code, added_key.message)
             if potential_matches := removed_map.get(lookup_key):
-                # Find the best match (closest line number)
-                best_match = min(
-                    potential_matches,
-                    key=lambda removed_key: abs(added_key.line - removed_key.line),
-                )
+                # Since the linter output is sorted, we can assume the first match is the correct one.
+                best_match = potential_matches[0]
 
-                original_line = snapshot.index[best_match].original
-                current_line = current.index[added_key].original
+                try:
+                    # Get the content of the file from the ref
+                    snapshot_file_content = subprocess.check_output(
+                        ["git", "show", f"{ref}:{best_match.path}"], text=True
+                    )
+                    snapshot_lines = snapshot_file_content.splitlines()
+                    original_line_content = snapshot_lines[best_match.line - 1].strip()
 
-                # Use difflib to compare the lines, ignoring the line numbers
-                original_parts = original_line.split(":", 2)
-                current_parts = current_line.split(":", 2)
+                    # Get the content of the file from the current directory
+                    with open(added_key.path, "r") as f:
+                        current_lines = f.readlines()
+                    current_line_content = current_lines[added_key.line - 1].strip()
 
-                if len(original_parts) == 3 and len(current_parts) == 3:
-                    if original_parts[0] == current_parts[0] and original_parts[2] == current_parts[2]:
+                    if original_line_content == current_line_content:
                         moved_keys.append((best_match, added_key))
                         removed_keys.remove(best_match)
-                        potential_matches.remove(best_match)
+                        potential_matches.pop(0)
                         continue
+
+                except (subprocess.CalledProcessError, FileNotFoundError, IndexError):
+                    # If git show fails, or the file doesn't exist, or the line doesn't exist,
+                    # we can't determine if the error moved.
+                    pass
 
             still_added.add(added_key)
         added_keys = still_added
