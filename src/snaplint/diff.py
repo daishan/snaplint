@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import subprocess
 
-from snaplint.models import DiffResult, IssueSet
+from snaplint.models import DiffResult, IssueKey, IssueSet
 
 
 def _get_sort_key(k):
     return k.path, k.line, k.column, k.code or "", k.message or ""
+
 
 def diff_issue_sets(
     current: IssueSet,
@@ -31,7 +32,8 @@ def diff_issue_sets(
         for added_key in added_keys:
             lookup_key = (added_key.path, added_key.code, added_key.message)
             if potential_matches := removed_map.get(lookup_key):
-                # Since the linter output is sorted, we can assume the first match is the correct one.
+                # Since the linter output is sorted, we can assume the first
+                # match is the correct one.
                 best_match = potential_matches[0]
 
                 try:
@@ -43,7 +45,7 @@ def diff_issue_sets(
                     original_line_content = snapshot_lines[best_match.line - 1].strip()
 
                     # Get the content of the file from the current directory
-                    with open(added_key.path, "r") as f:
+                    with open(added_key.path) as f:
                         current_lines = f.readlines()
                     current_line_content = current_lines[added_key.line - 1].strip()
 
@@ -53,9 +55,13 @@ def diff_issue_sets(
                         potential_matches.pop(0)
                         continue
 
-                except (subprocess.CalledProcessError, FileNotFoundError, IndexError):
-                    # If git show fails, or the file doesn't exist, or the line doesn't exist,
-                    # we can't determine if the error moved.
+                except (
+                    subprocess.CalledProcessError,
+                    FileNotFoundError,
+                    IndexError,
+                ):
+                    # If git show fails, or the file doesn't exist, or the line
+                    # doesn't exist, we can't determine if the error moved.
                     pass
 
             still_added.add(added_key)

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import re
-from typing import Annotated, Any, Literal, Mapping, Optional
+from typing import Annotated, Any, Literal, Mapping
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     NonNegativeInt,
-    PositiveInt,
     StrictStr,
     model_validator,
 )
@@ -35,6 +34,7 @@ def validate_normalized_path(v: Any) -> str:
 
 NormalizedPath = Annotated[str, AfterValidator(validate_normalized_path)]
 
+
 def to_upper(v: str) -> str:
     return v.upper()
 
@@ -53,7 +53,7 @@ class IssueLine(BaseModel):
     path: NormalizedPath
     line: NonNegativeInt
     column: NonNegativeInt = 0
-    code: Optional[ConstrainedStrUpper] = None
+    code: ConstrainedStrUpper | None = None
     message: StrictStr
 
 
@@ -63,10 +63,10 @@ class IssueKey(BaseModel):
     path: NormalizedPath
     line: NonNegativeInt
     column: NonNegativeInt
-    code: Optional[ConstrainedStrUpper] = None
-    message: Optional[StrictStr] = None
+    code: ConstrainedStrUpper | None = None
+    message: StrictStr | None = None
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def code_or_message_exists(self) -> IssueKey:
         if self.code is None and self.message is None:
             raise ValueError("Either code or message must be set")

@@ -9,7 +9,9 @@ from snaplint.models import IssueKey, IssueLine
 # Regexes for different linter formats
 # flake8: path/to/file.py:LINE:COL: CODE Message
 FLAKE8_RE: Final[Pattern[str]] = re.compile(
-    r"^(?P<path>(?:\./)?[^:]+):(?P<line>\d+):(?P<col>\d+): (?P<code>[A-Z]+\d+) (?P<msg>.+)$")
+    r"^(?P<path>(?:\./)?[^:]+):(?P<line>\d+):(?P<col>\d+): "
+    r"(?P<code>[A-Z]+\d+) (?P<msg>.+)$"
+)
 
 MYPY_RE: Final[Pattern[str]] = re.compile(
     r"^(?P<path>[^:]+):(?P<line>\d+):(?:(?P<col>\d+):)? "
@@ -25,11 +27,13 @@ PYLINT_RE1: Final[Pattern[str]] = re.compile(
 # pylint (style 2): path/to/file.py:LINE: [CODE(symbol)] Message
 PYLINT_RE2: Final[Pattern[str]] = re.compile(
     r"^(?P<path>[^:]+):(?P<line>\d+): \[(?P<code>[A-Z]\d{4})\((?P<symbol>.*)\)\] "
-    r"(?P<msg>.+)$")
+    r"(?P<msg>.+)$"
+)
 
 # Generic: path:line[:col]: message
 GENERIC_RE: Final[Pattern[str]] = re.compile(
-    r"^(?P<path>[^:]+):(?P<line>\d+):(?:(?P<col>\d+):)? (?P<msg>.+)$")
+    r"^(?P<path>[^:]+):(?P<line>\d+):(?:(?P<col>\d+):)? (?P<msg>.+)$"
+)
 
 
 def _normalize_message(text: str) -> str:

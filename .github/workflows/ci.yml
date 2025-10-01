@@ -30,6 +30,9 @@ jobs:
       - name: Lint with ruff
         run: |
           uv run ruff check src
+      - name: Check code format with black
+        run: |
+          uv run black --check src tests
       - name: Type check with mypy
         run: |
           uv run mypy --strict src

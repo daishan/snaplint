@@ -12,6 +12,7 @@ from snaplint.cli import main
 def mock_stdin(monkeypatch, text: str):
     monkeypatch.setattr(sys, "stdin", io.StringIO(text))
 
+
 def mock_argv(monkeypatch, *args: str):
     monkeypatch.setattr(sys, "argv", ["snaplint", *args])
 

@@ -33,6 +33,7 @@ dev = [
   "pytest-cov",
   "mypy",
   "ruff",
+  "black",
 ]
 
 [project.urls]
@@ -49,6 +50,8 @@ packages = ["src/snaplint"]
 
 [tool.ruff]
 line-length = 88
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4"]
 ignore = ["B905"] # `zip()` without `strict=`. In this project, the inputs are trusted.
 

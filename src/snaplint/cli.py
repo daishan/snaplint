@@ -31,9 +31,15 @@ def _main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # diff command
-    parser_diff = subparsers.add_parser("diff", help="Compare linter output to a snapshot.")
-    parser_diff.add_argument("snapshot_path", type=Path, help="Path to the snapshot file.")
-    parser_diff.add_argument("--ref", type=str, help="Git ref to compare against for moved errors.")
+    parser_diff = subparsers.add_parser(
+        "diff", help="Compare linter output to a snapshot."
+    )
+    parser_diff.add_argument(
+        "snapshot_path", type=Path, help="Path to the snapshot file."
+    )
+    parser_diff.add_argument(
+        "--ref", type=str, help="Git ref to compare against for moved errors."
+    )
 
     # take-snapshot command
     parser_take_snapshot = subparsers.add_parser(

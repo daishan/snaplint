@@ -56,12 +56,8 @@ def test_diff_order_insensitivity():
     diff = diff_issue_sets(current=current_set, snapshot=snapshot_set)
 
     expected_diff = DiffResult(
-        added=(
-            IssueKey(path="file.py", line=4, column=1, code="E004"),
-        ),
-        removed=(
-            IssueKey(path="file.py", line=2, column=1, code="W002"),
-        ),
+        added=(IssueKey(path="file.py", line=4, column=1, code="E004"),),
+        removed=(IssueKey(path="file.py", line=2, column=1, code="W002"),),
         moved=(),
         unchanged_count=2,
     )
@@ -101,6 +97,7 @@ import os
 import subprocess
 from pathlib import Path
 
+
 def test_diff_moved_issues(tmp_path: Path):
     # Create a git repository
     os.chdir(tmp_path)
@@ -137,6 +134,7 @@ def test_diff_moved_issues(tmp_path: Path):
     old_key, new_key = diff.moved[0]
     assert old_key.line == 2
     assert new_key.line == 3
+
 
 def test_diff_multiple_moved_issues(tmp_path: Path):
     # Create a git repository
