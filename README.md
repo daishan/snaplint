@@ -12,34 +12,63 @@ pip install snaplint
 
 `snaplint` reads linter output from `STDIN`.
 
-### Create a snapshot
+### `snaplint diff <SNAPSHOT_PATH>`
 
-First, create a snapshot of the current linter findings. You can do this with shell redirection:
+Compares current linter output from `STDIN` against a snapshot file.
+
+**Arguments:**
+- `<SNAPSHOT_PATH>`: Path to the snapshot file.
+
+**Options:**
+- `--ref <GIT_REF>`: (Optional) A Git reference (e.g., `origin/main`, `HEAD~1`) to compare against for detecting moved errors. When provided, `snaplint` will attempt to identify errors that have only changed their line number by comparing the content of the affected lines in the current branch against the specified Git reference.
+
+**Output:**
+-   Lines that are new (present now, absent in snapshot) → printed in <span style="color:red">red</span>, with ` (+)` suffix.
+-   Lines that are removed (present in snapshot, absent now) → printed in <span style="color:green">green</span>, with ` (-)` suffix.
+-   Lines that have moved (same error, different line number) → printed in <span style="color:yellow">yellow</span>, with ` (~)` suffix.
+-   A one-line summary to `STDERR`: `summary: +<new> -<removed> ~<moved> (unchanged <same>)`.
+
+**Exit codes:**
+-   `0` → no new issues
+-   `1` → there are new issues
+-   `2` → usage/IO errors (e.g., missing snapshot, no stdin)
+-   `3` → unexpected internal error
+
+**Examples:**
 
 ```bash
-flake8 . > lint.snapshot.txt
+# Compare a new run to the snapshot
+flake8 . | snaplint diff lint.snapshot.txt
+
+# Compare a new run to the snapshot, detecting moved errors against 'origin/main'
+flake8 . | snaplint diff lint.snapshot.txt --ref origin/main
 ```
 
-Or, you can use the `take-snapshot` helper command:
+### `snaplint take-snapshot <SNAPSHOT_PATH>`
+
+Writes `STDIN` directly to `SNAPSHOT_PATH` verbatim (no parsing).
+
+**Arguments:**
+- `<SNAPSHOT_PATH>`: Path to the snapshot file.
+
+**Output:**
+-   Writes snapshot file; prints a short success line (to `STDERR`).
+
+**Exit codes:**
+-   `0` → success
+-   `2` → usage/IO errors
+
+**Examples:**
 
 ```bash
+# Create a snapshot file (via shell redirection)
+flake8 . > lint.snapshot.txt
+
+# Create a snapshot file using the take-snapshot command
 flake8 . | snaplint take-snapshot lint.snapshot.txt
 ```
 
-### Compare against a snapshot
-
-Later, to see what's changed, pipe a new linter run into `snaplint diff`:
-
-```bash
-flake8 . | snaplint diff lint.snapshot.txt
-```
-
--   **New issues** will be printed in <span style="color:red">red</span>.
--   **Fixed issues** will be printed in <span style="color:green">green</span>.
-
-`snaplint` will exit with code `0` only if no new issues were introduced.
-
-### Supported Linters
+## Supported Linters
 
 `snaplint` automatically detects output from:
 
