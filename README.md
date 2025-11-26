@@ -1,79 +1,162 @@
 # snaplint
 
-A CLI to snapshot current linter findings and later diff new runs against that snapshot, so teams can adopt linters on large repos without breaking CI.
+**Snapshot your linter errors and track only new issues in CI** — perfect for adopting linters incrementally on large codebases without breaking existing workflows.
 
-## Installation
+`snaplint` captures a baseline of current linter findings and lets you diff future runs against it. Only new errors cause CI failures, while existing issues are tracked separately.
+
+## Quick Start
+
+Install via pip or uv:
 
 ```bash
 pip install snaplint
+# or
+uv tool install snaplint
 ```
 
-## Usage
+### Basic Workflow
 
-`snaplint` reads linter output from `STDIN`.
-
-### `snaplint diff <SNAPSHOT_PATH>`
-
-Compares current linter output from `STDIN` against a snapshot file.
-
-**Arguments:**
-- `<SNAPSHOT_PATH>`: Path to the snapshot file.
-
-**Options:**
-- `--ref <GIT_REF>`: (Optional) A Git reference (e.g., `origin/main`, `HEAD~1`) to compare against for detecting moved errors. When provided, `snaplint` will attempt to identify errors that have only changed their line number by comparing the content of the affected lines in the current branch against the specified Git reference.
-
-**Output:**
--   Lines that are new (present now, absent in snapshot) → printed in <span style="color:red">red</span>, with ` (+)` suffix.
--   Lines that are removed (present in snapshot, absent now) → printed in <span style="color:green">green</span>, with ` (-)` suffix.
--   Lines that have moved (same error, different line number) → printed in <span style="color:yellow">yellow</span>, with ` (~)` suffix.
--   A one-line summary to `STDERR`: `summary: +<new> -<removed> ~<moved> (unchanged <same>)`.
-
-**Exit codes:**
--   `0` → no new issues
--   `1` → there are new issues
--   `2` → usage/IO errors (e.g., missing snapshot, no stdin)
--   `3` → unexpected internal error
-
-**Examples:**
+1. **Create a baseline snapshot** of your current linter output:
 
 ```bash
-# Compare a new run to the snapshot
-flake8 . | snaplint diff lint.snapshot.txt
-
-# Compare a new run to the snapshot, detecting moved errors against 'origin/main'
-flake8 . | snaplint diff lint.snapshot.txt --ref origin/main
+flake8 src/ | snaplint take-snapshot
+# Creates .snaplint/snapshot.flake8.json
 ```
 
-### `snaplint take-snapshot <SNAPSHOT_PATH>`
-
-Writes `STDIN` directly to `SNAPSHOT_PATH` verbatim (no parsing).
-
-**Arguments:**
-- `<SNAPSHOT_PATH>`: Path to the snapshot file.
-
-**Output:**
--   Writes snapshot file; prints a short success line (to `STDERR`).
-
-**Exit codes:**
--   `0` → success
--   `2` → usage/IO errors
-
-**Examples:**
+2. **Check for new issues** in CI or locally:
 
 ```bash
-# Create a snapshot file (via shell redirection)
-flake8 . > lint.snapshot.txt
+flake8 src/ | snaplint diff
+# Exit code 0: no new issues ✓
+# Exit code 1: new issues found ✗
+```
 
-# Create a snapshot file using the take-snapshot command
-flake8 . | snaplint take-snapshot lint.snapshot.txt
+The diff command shows you:
+
+- ✗ **New errors** (red) — will fail CI
+- ✓ **Removed errors** (green) — improvements!
+- **File-level changes** — error count and ordering changes per file
+
+### Auto-Detection
+
+`snaplint` automatically detects your linter (flake8, mypy, pylint, or generic format) and creates appropriately named snapshots in `.snaplint/`:
+
+```bash
+# Each linter gets its own snapshot
+flake8 . | snaplint take-snapshot    # → .snaplint/snapshot.flake8.json
+mypy . | snaplint take-snapshot      # → .snaplint/snapshot.mypy.json
+pylint src/ | snaplint take-snapshot # → .snaplint/snapshot.pylint.json
+```
+
+### Custom Snapshot Paths
+
+Specify a custom path if needed:
+
+```bash
+flake8 . | snaplint take-snapshot snapshots/baseline.json
+flake8 . | snaplint diff snapshots/baseline.json
+```
+
+### Exit Codes
+
+- `0` — No new issues (safe to merge)
+- `1` — New issues detected (CI should fail)
+- `2` — Usage error (missing snapshot, no input, etc.)
+- `3` — Unexpected internal error
+
+## How It Works
+
+`snaplint` creates SHA1 fingerprints of each error by hashing the error type + source code line. This makes error tracking resilient to:
+
+- Line number changes (refactoring, adding imports)
+- File reorganization
+- Whitespace changes in unrelated code
+
+When comparing snapshots:
+
+- **Per-file tracking** shows which files improved or regressed
+- **Order changes** are detected when errors move within a file
+- **Count changes** show if the total number of issues changed
+- **File-level errors** (line 0) are fully supported
+
+Snapshots are stored as JSON with version metadata for forward compatibility.
+
+## CI Integration
+
+### GitHub Actions
+
+```yaml
+- name: Check for new linter issues
+  run: |
+    flake8 . | snaplint diff || {
+      echo "❌ New linting issues detected"
+      exit 1
+    }
+```
+
+### Pre-commit Hook
+
+Add to `.pre-commit-config.yaml`:
+
+```yaml
+- repo: local
+  hooks:
+    - id: snaplint
+      name: Check linting snapshot
+      entry: bash -c 'flake8 . | snaplint diff'
+      language: system
+      pass_filenames: false
 ```
 
 ## Supported Linters
 
-`snaplint` automatically detects output from:
+`snaplint` automatically recognizes output from:
 
--   `flake8` (or compatibles like `flake9`)
--   `mypy`
--   `pylint`
+- **flake8** and compatible tools (flake9, etc.)
+- **mypy**
+- **pylint**
+- **Generic format** — any tool outputting `path:line:col: message`
 
-If the line format is not recognized, `snaplint` will attempt a generic `path:line:col: message` parsing and warn on `STDERR` for any lines it cannot parse.
+Unrecognized lines are skipped with a warning to stderr.
+
+## Development
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/GENWAY-AI/snaplint.git
+cd snaplint
+
+# Install with uv (recommended)
+uv sync
+
+# Or with pip
+pip install -e ".[dev]"
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=snaplint --cov-report=html
+
+# Run specific test file
+uv run pytest tests/test_e2e.py -v
+```
+
+### Local Installation
+
+Install as a global command for testing:
+
+```bash
+uv tool install -e .
+snaplint --version
+```
+
+## License
+
+MIT

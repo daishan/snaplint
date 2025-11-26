@@ -5,23 +5,44 @@ build-backend = "hatchling.build"
 [project]
 name = "snaplint"
 version = "0.1.2"
-description = "A tiny, zero-config CLI to snapshot current linter findings and later diff new runs against that snapshot."
+description = "Snapshot linter errors and track only new issues — perfect for incremental linter adoption on large codebases"
 readme = "README.md"
 requires-python = ">=3.8"
-license = "MIT"
+license = {text = "MIT"}
 authors = [
-  { name = "Gemini", email = "gemini@google.com" },
+  { name = "GENWAY AI", email = "contact@genway.ai" },
+]
+keywords = [
+  "linter",
+  "lint",
+  "ci",
+  "baseline",
+  "snapshot",
+  "diff",
+  "flake8",
+  "mypy",
+  "pylint",
+  "code-quality",
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
   "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Testing",
+  "Typing :: Typed",
 ]
 dependencies = [
   "pydantic>=2",
@@ -34,10 +55,14 @@ dev = [
   "mypy",
   "ruff",
   "black",
+  "flake8",
 ]
 
 [project.urls]
-Homepage = "https://github.com/gemini/snaplint"
+Homepage = "https://github.com/GENWAY-AI/snaplint"
+Repository = "https://github.com/GENWAY-AI/snaplint"
+Issues = "https://github.com/GENWAY-AI/snaplint/issues"
+Changelog = "https://github.com/GENWAY-AI/snaplint/releases"
 
 [project.scripts]
 snaplint = "snaplint.cli:main"
