@@ -46,10 +46,14 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
+    outputs:
+      tag_created: ${{ steps.create_tag.outputs.created }}
+      version: ${{ steps.get_version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get version from pyproject.toml
         id: get_version
@@ -68,9 +72,59 @@ jobs:
           fi
 
       - name: Create and push tag
+        id: create_tag
         if: steps.check_tag.outputs.exists == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "${{ steps.get_version.outputs.tag }}" -m "Release ${{ steps.get_version.outputs.tag }}"
           git push origin "${{ steps.get_version.outputs.tag }}"
+          echo "created=true" >> $GITHUB_OUTPUT
+
+  build-release:
+    needs: tag-release
+    runs-on: ubuntu-latest
+    if: needs.tag-release.outputs.tag_created == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.tag-release.outputs.version }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build package
+        run: python -m build
+
+      - name: Check package
+        run: twine check dist/*
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # publish-release:
+  #   needs: build-release
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     id-token: write  # Required for trusted publishing
+  #   steps:
+  #     - name: Download artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: dist
+  #         path: dist/
+  #
+  #     - name: Publish to PyPI
+  #       uses: pypa/gh-action-pypi-publish@release/v1
+  #       # Uses trusted publishing - configure at https://pypi.org/manage/account/publishing/
+  #       # No API token needed when using trusted publishing
