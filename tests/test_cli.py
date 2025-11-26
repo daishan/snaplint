@@ -41,10 +41,10 @@ def test_cli_diff_no_new_issues(
     input_content = f"{test_file}:1:1: E001 msg1\n"
     mock_stdin(monkeypatch, text=input_content)
     mock_argv(monkeypatch, "take-snapshot", str(snapshot_file))
-    
+
     # Take the snapshot first
     assert main() == 0
-    
+
     # Now diff against the same input
     mock_stdin(monkeypatch, text=input_content)
     mock_argv(monkeypatch, "diff", str(snapshot_file))
@@ -68,7 +68,7 @@ def test_cli_diff_new_issues(
     mock_stdin(monkeypatch, text=input_content)
     mock_argv(monkeypatch, "take-snapshot", str(snapshot_file))
     assert main() == 0
-    
+
     # Now diff with a different error
     mock_stdin(monkeypatch, text=f"{test_file}:2:1: E002 msg2\n")
     mock_argv(monkeypatch, "diff", str(snapshot_file))
@@ -92,7 +92,7 @@ def test_cli_diff_removed_issues(
     mock_stdin(monkeypatch, text=input_content)
     mock_argv(monkeypatch, "take-snapshot", str(snapshot_file))
     assert main() == 0
-    
+
     # Empty stdin
     mock_stdin(monkeypatch, text="")
     mock_argv(monkeypatch, "diff", str(snapshot_file))
@@ -150,10 +150,10 @@ def test_cli_take_snapshot(
     return_code = main()
 
     assert return_code == 0
-    
+
     # Verify snapshot is valid JSON
     snapshot_data = json.loads(snapshot_file.read_text())
     assert snapshot_data["version"] == "1"
     assert len(snapshot_data["files"]) == 1
-    
+
     assert f"Snapshot written to {snapshot_file}" in capsys.readouterr().err

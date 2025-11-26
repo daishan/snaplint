@@ -14,23 +14,23 @@ from snaplint.snapshot import build_snapshot_file, read_snapshot, write_snapshot
 
 def _detect_linter_from_lines(lines: list[str]) -> str:
     """Detect the linter type from the first few lines of output.
-    
+
     Returns a linter name like 'flake8', 'mypy', 'pylint', or 'generic'.
     """
     for line in lines[:10]:  # Check first 10 lines
         line = line.strip()
         if not line:
             continue
-        
+
         # Check for mypy patterns
         if ": error:" in line or ": warning:" in line or ": note:" in line:
             if "[" in line and "]" in line:
                 return "mypy"
-        
+
         # Check for pylint patterns
         if "************* Module" in line:
             return "pylint"
-        
+
         # Check for flake8 patterns (most common: path:line:col: CODE message)
         parts = line.split(":")
         if len(parts) >= 4:
@@ -42,12 +42,14 @@ def _detect_linter_from_lines(lines: list[str]) -> str:
                 if code_part and len(code_part) > 0:
                     first_word = code_part.split()[0]
                     if first_word and len(first_word) >= 3:
-                        # Check if it looks like a code (starts with letter, has digits)
-                        if first_word[0].isalpha() and any(c.isdigit() for c in first_word):
+                        # Check if it looks like a code
+                        has_letter = first_word[0].isalpha()
+                        has_digit = any(c.isdigit() for c in first_word)
+                        if has_letter and has_digit:
                             return "flake8"
             except (ValueError, IndexError):
                 pass
-    
+
     return "generic"
 
 
@@ -75,9 +77,10 @@ def main() -> int:
 def _main() -> int:
     parser = argparse.ArgumentParser(description="Snapshot linter findings.")
     parser.add_argument(
-        "-v", "--version",
+        "-v",
+        "--version",
         action="version",
-        version=f"%(prog)s {get_version('snaplint')}"
+        version=f"%(prog)s {get_version('snaplint')}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -86,8 +89,14 @@ def _main() -> int:
         "diff", help="Compare linter output to a snapshot."
     )
     parser_diff.add_argument(
-        "snapshot_path", type=Path, nargs="?", default=None,
-        help="Path to the snapshot file. If omitted, auto-detects linter and uses .snaplint/snapshot.<linter>.json"
+        "snapshot_path",
+        type=Path,
+        nargs="?",
+        default=None,
+        help=(
+            "Path to the snapshot file. If omitted, auto-detects linter "
+            "and uses .snaplint/snapshot.<linter>.json"
+        ),
     )
 
     # take-snapshot command
@@ -95,8 +104,14 @@ def _main() -> int:
         "take-snapshot", help="Write linter output to a snapshot file."
     )
     parser_take_snapshot.add_argument(
-        "snapshot_path", type=Path, nargs="?", default=None,
-        help="Path to the snapshot file. If omitted, auto-detects linter and uses .snaplint/snapshot.<linter>.json"
+        "snapshot_path",
+        type=Path,
+        nargs="?",
+        default=None,
+        help=(
+            "Path to the snapshot file. If omitted, auto-detects linter "
+            "and uses .snaplint/snapshot.<linter>.json"
+        ),
     )
 
     args = parser.parse_args()
@@ -116,16 +131,16 @@ def _run_take_snapshot(args: argparse.Namespace) -> int:
 
     # Read all input lines
     input_lines = list(sys.stdin)
-    
+
     # Determine snapshot path
     if args.snapshot_path is None:
         # Auto-detect linter type and create default path
         linter_type = _detect_linter_from_lines(input_lines)
         snapshot_path = _get_default_snapshot_path(linter_type)
-        
+
         # Create .snaplint directory if it doesn't exist
         snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         print(f"Auto-detected linter: {linter_type}", file=sys.stderr)
         print(f"Using snapshot file: {snapshot_path}", file=sys.stderr)
     else:
@@ -152,19 +167,19 @@ def _run_diff(args: argparse.Namespace) -> int:
         snapshot_path = args.snapshot_path
         if not snapshot_path.exists():
             raise SnapshotReadError(f"Snapshot file not found: {snapshot_path}")
-    
+
     if sys.stdin.isatty():
         raise UsageError("stdin is empty. Pipe linter output to snaplint.")
 
     # Read all input lines
     input_lines = list(sys.stdin)
-    
+
     # Determine snapshot path for auto-detect case
     if args.snapshot_path is None:
         # Auto-detect linter type and create default path
         linter_type = _detect_linter_from_lines(input_lines)
         snapshot_path = _get_default_snapshot_path(linter_type)
-        
+
         if not snapshot_path.exists():
             raise SnapshotReadError(
                 f"No snapshot file found at {snapshot_path}.\n"
@@ -172,7 +187,7 @@ def _run_diff(args: argparse.Namespace) -> int:
                 f"Run 'snaplint take-snapshot' first to create a snapshot, "
                 f"or specify a snapshot path explicitly."
             )
-        
+
         print(f"Auto-detected linter: {linter_type}", file=sys.stderr)
         print(f"Using snapshot file: {snapshot_path}", file=sys.stderr)
 

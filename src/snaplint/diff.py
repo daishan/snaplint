@@ -23,10 +23,12 @@ def _diff_file_snapshots(
     unchanged_hashes = current_hashes & snapshot_hashes
 
     added_entries = tuple(
-        current_hash_map[h] for h in sorted(added_hashes, key=lambda h: current_hash_map[h].line)
+        current_hash_map[h]
+        for h in sorted(added_hashes, key=lambda h: current_hash_map[h].line)
     )
     removed_entries = tuple(
-        snapshot_hash_map[h] for h in sorted(removed_hashes, key=lambda h: snapshot_hash_map[h].line)
+        snapshot_hash_map[h]
+        for h in sorted(removed_hashes, key=lambda h: snapshot_hash_map[h].line)
     )
 
     # Check if count changed - true if there are any additions or removals
@@ -68,33 +70,36 @@ def diff_snapshot_files(
         current_file = current_files.get(path)
         snapshot_file = snapshot_files.get(path)
 
-        if current_file is None:
+        if current_file is None and snapshot_file is not None:
             # File only in snapshot (all removed)
             file_diff = FileDiff(
                 path=path,
                 count_changed=True,
                 order_changed=False,
-                added=tuple(),
+                added=(),
                 removed=snapshot_file.entries,
                 unchanged_count=0,
             )
-        elif snapshot_file is None:
+        elif snapshot_file is None and current_file is not None:
             # File only in current (all added)
             file_diff = FileDiff(
                 path=path,
                 count_changed=True,
                 order_changed=False,
                 added=current_file.entries,
-                removed=tuple(),
+                removed=(),
                 unchanged_count=0,
             )
-        else:
+        elif current_file is not None and snapshot_file is not None:
             # File in both
             file_diff = _diff_file_snapshots(
                 current_entries=list(current_file.entries),
                 snapshot_entries=list(snapshot_file.entries),
                 path=path,
             )
+        else:
+            # Both are None - shouldn't happen
+            continue
 
         # Only include files with changes
         if file_diff.added or file_diff.removed or file_diff.order_changed:
