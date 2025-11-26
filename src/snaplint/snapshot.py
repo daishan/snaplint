@@ -19,7 +19,15 @@ from snaplint.parse import get_issue_key, parse_lines
 
 
 def _read_source_line(file_path: str, line_number: int) -> str | None:
-    """Read a specific line from a source file."""
+    """Read a specific line from a source file.
+    
+    For line 0 (file-level errors), returns a special marker based on the file path.
+    """
+    # Line 0 indicates a file-level error (not tied to a specific line)
+    if line_number == 0:
+        # Use the file path as the "source line" for file-level errors
+        return f"<file-level:{file_path}>"
+    
     try:
         path = Path(file_path)
         if not path.exists():

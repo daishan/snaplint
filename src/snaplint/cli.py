@@ -28,6 +28,11 @@ def main() -> int:
 
 def _main() -> int:
     parser = argparse.ArgumentParser(description="Snapshot linter findings.")
+    parser.add_argument(
+        "-v", "--version",
+        action="version",
+        version="%(prog)s 0.1.1"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # diff command
