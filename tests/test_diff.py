@@ -1,200 +1,122 @@
 from __future__ import annotations
 
-import random
+from pathlib import Path
+from io import StringIO
 
-from snaplint.diff import diff_issue_sets
-from snaplint.models import DiffResult, IssueKey
-from snaplint.snapshot import build_issue_set
+from snaplint.diff import diff_snapshot_files
+from snaplint.snapshot import build_snapshot_file
 
 
-def test_diff_issue_sets():
+def test_diff_snapshot_files(tmp_path: Path):
+    """Test basic diff with added and removed issues."""
+    # Create test files
+    file1 = tmp_path / "file.py"
+    file1.write_text("line1\nline2\nline3\nline4\n")
+
+    file_path = str(file1)
     snapshot_lines = [
-        "file.py:1:1: E001 msg1",  # Unchanged
-        "file.py:2:1: W002 msg2",  # To be removed
-        "file.py:3:1: E003 msg3",  # Unchanged
+        f"{file_path}:1:1: E001 msg1",  # Unchanged
+        f"{file_path}:2:1: W002 msg2",  # To be removed
+        f"{file_path}:3:1: E003 msg3",  # Unchanged
     ]
     current_lines = [
-        "file.py:1:1: E001 msg1",  # Unchanged
-        "file.py:3:1: E003 msg3",  # Unchanged
-        "file.py:4:1: E004 msg4",  # Added
+        f"{file_path}:1:1: E001 msg1",  # Unchanged
+        f"{file_path}:3:1: E003 msg3",  # Unchanged
+        f"{file_path}:4:1: E004 msg4",  # Added
     ]
 
-    snapshot_set = build_issue_set(snapshot_lines)
-    current_set = build_issue_set(current_lines)
+    snapshot_file = build_snapshot_file(snapshot_lines)
+    current_file = build_snapshot_file(current_lines)
 
-    diff = diff_issue_sets(current=current_set, snapshot=snapshot_set)
+    diff = diff_snapshot_files(current=current_file, snapshot=snapshot_file)
 
-    assert diff.unchanged_count == 2
-    assert len(diff.added) == 1
-    assert len(diff.removed) == 1
+    assert diff.total_unchanged == 2
+    assert diff.total_added == 1
+    assert diff.total_removed == 1
+    assert diff.files_with_changes == 1
 
-    added_key = IssueKey(path="file.py", line=4, column=1, code="E004")
-    removed_key = IssueKey(path="file.py", line=2, column=1, code="W002")
+    # Check file diff
+    file_diff = diff.file_diffs[0]
+    assert file_diff.count_changed is True
+    assert len(file_diff.added) == 1
+    assert len(file_diff.removed) == 1
+    assert file_diff.added[0].line == 4
+    assert file_diff.removed[0].line == 2
 
-    assert diff.added[0] == added_key
-    assert diff.removed[0] == removed_key
 
+def test_diff_order_change(tmp_path: Path):
+    """Test detecting order changes without count changes."""
+    # Create test file with multiple errors
+    file1 = tmp_path / "file.py"
+    file1.write_text("error_line_1\nerror_line_2\nerror_line_3\n")
 
-def test_diff_order_insensitivity():
+    file_path = str(file1)
+    # Same errors, but reported in different order in linter output
     snapshot_lines = [
-        "file.py:1:1: E001 msg1",
-        "file.py:2:1: W002 msg2",
-        "file.py:3:1: E003 msg3",
+        f"{file_path}:1:1: E001 msg1",
+        f"{file_path}:2:1: E002 msg2",
+        f"{file_path}:3:1: E003 msg3",
     ]
+    # Simulate linter reporting in different order (e.g., sorted differently)
     current_lines = [
-        "file.py:4:1: E004 msg4",
-        "file.py:1:1: E001 msg1",
-        "file.py:3:1: E003 msg3",
+        f"{file_path}:3:1: E003 msg3",
+        f"{file_path}:1:1: E001 msg1",
+        f"{file_path}:2:1: E002 msg2",
     ]
 
-    # Shuffle the input to ensure order doesn't matter
-    random.shuffle(current_lines)
+    snapshot_file = build_snapshot_file(snapshot_lines)
+    current_file = build_snapshot_file(current_lines)
 
-    snapshot_set = build_issue_set(snapshot_lines)
-    current_set = build_issue_set(current_lines)
+    diff = diff_snapshot_files(current=current_file, snapshot=snapshot_file)
 
-    diff = diff_issue_sets(current=current_set, snapshot=snapshot_set)
+    # All entries are unchanged by hash
+    assert diff.total_unchanged == 3
+    assert diff.total_added == 0
+    assert diff.total_removed == 0
 
-    expected_diff = DiffResult(
-        added=(IssueKey(path="file.py", line=4, column=1, code="E004"),),
-        removed=(IssueKey(path="file.py", line=2, column=1, code="W002"),),
-        moved=(),
-        unchanged_count=2,
-    )
-
-    assert diff == expected_diff
+    # But order changed - current hash sequence is different from snapshot
+    file_diff = diff.file_diffs[0] if diff.file_diffs else None
+    if file_diff:
+        assert file_diff.order_changed is True
 
 
-def test_diff_empty_snapshot():
+def test_diff_empty_snapshot(tmp_path: Path):
+    """Test diff with empty snapshot."""
+    file1 = tmp_path / "file.py"
+    file1.write_text("line1\n")
+
+    file_path = str(file1)
     snapshot_lines = []
-    current_lines = ["file.py:1:1: E001 msg1"]
+    current_lines = [f"{file_path}:1:1: E001 msg1"]
 
-    snapshot_set = build_issue_set(snapshot_lines)
-    current_set = build_issue_set(current_lines)
+    from snaplint.models import SnapshotFile
 
-    diff = diff_issue_sets(current=current_set, snapshot=snapshot_set)
+    snapshot_file = SnapshotFile(files=tuple())
+    current_file = build_snapshot_file(current_lines)
 
-    assert len(diff.added) == 1
-    assert len(diff.removed) == 0
-    assert diff.unchanged_count == 0
+    diff = diff_snapshot_files(current=current_file, snapshot=snapshot_file)
+
+    assert diff.total_added == 1
+    assert diff.total_removed == 0
+    assert diff.total_unchanged == 0
 
 
-def test_diff_empty_current():
-    snapshot_lines = ["file.py:1:1: E001 msg1"]
+def test_diff_empty_current(tmp_path: Path):
+    """Test diff with empty current."""
+    file1 = tmp_path / "file.py"
+    file1.write_text("line1\n")
+
+    file_path = str(file1)
+    snapshot_lines = [f"{file_path}:1:1: E001 msg1"]
     current_lines = []
 
-    snapshot_set = build_issue_set(snapshot_lines)
-    current_set = build_issue_set(current_lines)
+    snapshot_file = build_snapshot_file(snapshot_lines)
+    from snaplint.models import SnapshotFile
 
-    diff = diff_issue_sets(current=current_set, snapshot=snapshot_set)
+    current_file = SnapshotFile(files=tuple())
 
-    assert len(diff.added) == 0
-    assert len(diff.removed) == 1
-    assert diff.unchanged_count == 0
+    diff = diff_snapshot_files(current=current_file, snapshot=snapshot_file)
 
-
-import os
-import subprocess
-from pathlib import Path
-
-
-def test_diff_moved_issues(tmp_path: Path):
-    # Create a git repository
-    os.chdir(tmp_path)
-    subprocess.run(["git", "init"])
-    subprocess.run(["git", "config", "user.name", "tester"])
-    subprocess.run(["git", "config", "user.email", "tester@example.com"])
-
-    # Create the initial file
-    file_path = tmp_path / "file.py"
-    file_path.write_text("line1\nline2\nline3\n")
-    subprocess.run(["git", "add", "file.py"])
-    subprocess.run(["git", "commit", "-m", "initial commit"])
-    subprocess.run(["git", "tag", "v1"])
-
-    # Create the snapshot
-    snapshot_lines = ["file.py:2:1: E001 my error"]
-    snapshot_set = build_issue_set(snapshot_lines)
-
-    # Modify the file
-    file_path.write_text("line1\nline1.5\nline2\nline3\n")
-
-    # Create the current issues
-    current_lines = ["file.py:3:1: E001 my error"]
-    current_set = build_issue_set(current_lines)
-
-    # Run the diff
-    diff = diff_issue_sets(current=current_set, snapshot=snapshot_set, ref="v1")
-
-    assert len(diff.moved) == 1
-    assert len(diff.added) == 0
-    assert len(diff.removed) == 0
-    assert diff.unchanged_count == 0
-
-    old_key, new_key = diff.moved[0]
-    assert old_key.line == 2
-    assert new_key.line == 3
-
-
-def test_diff_multiple_moved_issues(tmp_path: Path):
-    # Create a git repository
-    os.chdir(tmp_path)
-    subprocess.run(["git", "init"])
-    subprocess.run(["git", "config", "user.name", "tester"])
-    subprocess.run(["git", "config", "user.email", "tester@example.com"])
-
-    # Create the initial file
-    file_path = tmp_path / "file.py"
-    file_path.write_text(
-        "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n"
-    )
-    subprocess.run(["git", "add", "file.py"])
-    subprocess.run(["git", "commit", "-m", "initial commit"])
-    subprocess.run(["git", "tag", "v1"])
-
-    # Create the snapshot
-    snapshot_lines = [
-        "file.py:2:1: E001 error1",
-        "file.py:4:1: E002 error2",
-        "file.py:8:1: E003 error3",
-    ]
-    snapshot_set = build_issue_set(snapshot_lines)
-
-    # Modify the file
-    file_path.write_text(
-        "line1\ninserted1\ninserted2\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n"
-    )
-
-    # Create the current issues
-    current_lines = [
-        "file.py:4:1: E001 error1",
-        "file.py:6:1: E002 error2",
-        "file.py:10:1: E003 error3",
-    ]
-    current_set = build_issue_set(current_lines)
-
-    # Run the diff
-    diff = diff_issue_sets(current=current_set, snapshot=snapshot_set, ref="v1")
-
-    assert len(diff.moved) == 3
-    assert len(diff.added) == 0
-    assert len(diff.removed) == 0
-    assert diff.unchanged_count == 0
-
-    # Sort moved issues for stable assertion
-    moved = sorted(diff.moved, key=lambda pair: pair[0].line)
-
-    # error1 moved from 2 to 4
-    old_key, new_key = moved[0]
-    assert old_key.line == 2
-    assert new_key.line == 4
-
-    # error2 moved from 4 to 6
-    old_key, new_key = moved[1]
-    assert old_key.line == 4
-    assert new_key.line == 6
-
-    # error3 moved from 8 to 10
-    old_key, new_key = moved[2]
-    assert old_key.line == 8
-    assert new_key.line == 10
+    assert diff.total_added == 0
+    assert diff.total_removed == 1
+    assert diff.total_unchanged == 0

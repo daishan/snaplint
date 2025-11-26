@@ -6,6 +6,7 @@ from typing import Annotated, Literal, Mapping
 from pydantic import (
     BaseModel,
     ConfigDict,
+    Field,
     NonNegativeInt,
     StrictStr,
     model_validator,
@@ -82,13 +83,69 @@ class IssueSet(BaseModel):
     index: Mapping[IssueKey, IssueLine]
 
 
+class SnapshotEntry(BaseModel):
+    """Represents a single error in the snapshot with SHA1 hash."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: NormalizedPath
+    line: NonNegativeInt
+    column: NonNegativeInt
+    code: ConstrainedStrUpper | None = None
+    message: StrictStr | None = None
+    sha1: StrictStr  # SHA1 hash of (error_type + actual_code_line)
+    original: StrictStr  # Original linter output line
+
+    @model_validator(mode="after")
+    def code_or_message_exists(self) -> SnapshotEntry:
+        if self.code is None and self.message is None:
+            raise ValueError("Either code or message must be set")
+        if self.code is not None and self.message is not None:
+            raise ValueError("Message must be None if code is set")
+        return self
+
+
+class FileSnapshot(BaseModel):
+    """Snapshot data for a single file."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: NormalizedPath
+    error_count: NonNegativeInt
+    entries: tuple[SnapshotEntry, ...]  # Ordered list of entries
+    hash_sequence: tuple[StrictStr, ...]  # Ordered sequence of SHA1 hashes
+
+
+class SnapshotFile(BaseModel):
+    """Root snapshot file structure."""
+
+    model_config = ConfigDict(frozen=True)
+
+    version: Literal["1"] = "1"
+    files: tuple[FileSnapshot, ...] = Field(default_factory=tuple)
+
+
+class FileDiff(BaseModel):
+    """Diff information for a single file."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: NormalizedPath
+    count_changed: bool  # Whether the number of errors changed
+    order_changed: bool  # Whether the order of hashes changed
+    added: tuple[SnapshotEntry, ...]
+    removed: tuple[SnapshotEntry, ...]
+    unchanged_count: NonNegativeInt
+
+
 class DiffResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    added: tuple[IssueKey, ...]
-    removed: tuple[IssueKey, ...]
-    moved: tuple[tuple[IssueKey, IssueKey], ...]
-    unchanged_count: NonNegativeInt
+    file_diffs: tuple[FileDiff, ...]  # Per-file diff information
+    total_added: NonNegativeInt
+    total_removed: NonNegativeInt
+    total_unchanged: NonNegativeInt
+    files_with_changes: NonNegativeInt  # Number of files with any changes
 
 
 class RenderOptions(BaseModel):

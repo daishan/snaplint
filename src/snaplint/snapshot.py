@@ -1,11 +1,66 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
+from pathlib import Path
 from typing import IO, Iterable
 
-from snaplint.errors import ParseWarning
-from snaplint.models import IssueKey, IssueLine, IssueSet
+from snaplint.errors import ParseWarning, SnapshotReadError
+from snaplint.models import (
+    FileSnapshot,
+    IssueKey,
+    IssueLine,
+    IssueSet,
+    SnapshotEntry,
+    SnapshotFile,
+)
 from snaplint.parse import get_issue_key, parse_lines
+
+
+def _read_source_line(file_path: str, line_number: int) -> str | None:
+    """Read a specific line from a source file."""
+    try:
+        path = Path(file_path)
+        if not path.exists():
+            return None
+        with path.open("r", encoding="utf-8") as f:
+            lines = f.readlines()
+            if 0 < line_number <= len(lines):
+                return lines[line_number - 1].strip()
+    except (OSError, UnicodeDecodeError):
+        pass
+    return None
+
+
+def _compute_sha1(error_identifier: str, source_line: str) -> str:
+    """Compute SHA1 hash of error identifier + source line."""
+    content = f"{error_identifier}:{source_line}"
+    return hashlib.sha1(content.encode("utf-8")).hexdigest()
+
+
+def _issue_to_snapshot_entry(issue: IssueLine) -> SnapshotEntry | None:
+    """Convert an IssueLine to a SnapshotEntry with SHA1 hash."""
+    source_line = _read_source_line(issue.path, issue.line)
+    if source_line is None:
+        # Can't compute hash without source line, skip this entry
+        return None
+
+    # Use code if available, otherwise use message as identifier
+    error_identifier = issue.code if issue.code else issue.message
+
+    sha1 = _compute_sha1(error_identifier, source_line)
+
+    # SnapshotEntry requires message=None when code is set
+    return SnapshotEntry(
+        path=issue.path,
+        line=issue.line,
+        column=issue.column,
+        code=issue.code,
+        message=None if issue.code else issue.message,
+        sha1=sha1,
+        original=issue.original,
+    )
 
 
 def build_issue_set(lines: Iterable[str]) -> IssueSet:
@@ -26,6 +81,61 @@ def build_issue_set(lines: Iterable[str]) -> IssueSet:
     )
 
 
-def read_snapshot(snapshot_file: IO[str]) -> IssueSet:
-    """Read a snapshot file and build an IssueSet."""
-    return build_issue_set(snapshot_file)
+def build_snapshot_file(lines: Iterable[str]) -> SnapshotFile:
+    """Build a SnapshotFile from linter output lines."""
+    # Parse all issues
+    issues: list[IssueLine] = []
+    for result in parse_lines(lines):
+        if isinstance(result, ParseWarning):
+            print(f"snaplint: {result}", file=sys.stderr)
+        elif isinstance(result, IssueLine):
+            issues.append(result)
+
+    # Group by file path
+    files_dict: dict[str, list[SnapshotEntry]] = {}
+    for issue in issues:
+        entry = _issue_to_snapshot_entry(issue)
+        if entry is None:
+            print(
+                f"snaplint: warning: could not read source for {issue.path}:{issue.line}, skipping",
+                file=sys.stderr,
+            )
+            continue
+
+        if entry.path not in files_dict:
+            files_dict[entry.path] = []
+        files_dict[entry.path].append(entry)
+
+    # Build FileSnapshot objects
+    file_snapshots: list[FileSnapshot] = []
+    for path in sorted(files_dict.keys()):
+        entries = tuple(files_dict[path])
+        hash_sequence = tuple(entry.sha1 for entry in entries)
+
+        file_snapshot = FileSnapshot(
+            path=path,
+            error_count=len(entries),
+            entries=entries,
+            hash_sequence=hash_sequence,
+        )
+        file_snapshots.append(file_snapshot)
+
+    return SnapshotFile(files=tuple(file_snapshots))
+
+
+def write_snapshot(snapshot: SnapshotFile, output: IO[str]) -> None:
+    """Write a SnapshotFile to JSON output."""
+    json_data = snapshot.model_dump(mode="json")
+    json.dump(json_data, output, indent=2)
+    output.write("\n")
+
+
+def read_snapshot(snapshot_file: IO[str]) -> SnapshotFile:
+    """Read a snapshot file and build a SnapshotFile."""
+    try:
+        data = json.load(snapshot_file)
+        return SnapshotFile.model_validate(data)
+    except json.JSONDecodeError as e:
+        raise SnapshotReadError(f"Invalid JSON in snapshot file: {e}") from e
+    except Exception as e:
+        raise SnapshotReadError(f"Failed to parse snapshot file: {e}") from e

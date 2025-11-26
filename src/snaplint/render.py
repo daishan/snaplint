@@ -3,12 +3,13 @@ from __future__ import annotations
 import sys
 from typing import TextIO
 
-from snaplint.models import DiffResult, IssueSet, RenderOptions
+from snaplint.models import DiffResult, RenderOptions
 
 # ANSI color codes
 RED = "\033[91m"
 GREEN = "\033[92m"
 YELLOW = "\033[93m"
+BLUE = "\033[94m"
 RESET = "\033[0m"
 
 
@@ -18,8 +19,6 @@ def _colorize(text: str, color: str) -> str:
 
 def render_diff(
     diff: DiffResult,
-    current_set: IssueSet,
-    snapshot_set: IssueSet,
     options: RenderOptions,
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
@@ -27,37 +26,59 @@ def render_diff(
     """Render the diff result to stdout and stderr."""
     use_color = options.color_enabled and options.stdout_is_tty
 
-    # Print removed issues (in green)
-    for key in diff.removed:
-        line = snapshot_set.index[key].original
-        output = f"{line} (-)"
-        if use_color:
-            print(_colorize(output, GREEN), file=stdout)
-        else:
-            print(output, file=stdout)
+    # Process each file with changes
+    for file_diff in diff.file_diffs:
+        # Print file header if there are changes
+        if file_diff.added or file_diff.removed or file_diff.order_changed:
+            header = f"\n{file_diff.path}:"
+            if use_color:
+                print(_colorize(header, BLUE), file=stdout)
+            else:
+                print(header, file=stdout)
 
-    # Print added issues (in red)
-    for key in diff.added:
-        line = current_set.index[key].original
-        output = f"{line} (+)"
-        if use_color:
-            print(_colorize(output, RED), file=stdout)
-        else:
-            print(output, file=stdout)
+            # Show count change indicator
+            if file_diff.count_changed:
+                old_count = file_diff.unchanged_count + len(file_diff.removed)
+                new_count = file_diff.unchanged_count + len(file_diff.added)
+                count_msg = f"  [count changed: {old_count} -> {new_count}]"
+                if use_color:
+                    print(_colorize(count_msg, YELLOW), file=stdout)
+                else:
+                    print(count_msg, file=stdout)
 
-    # Print moved issues (in yellow)
-    for old_key, new_key in diff.moved:
-        old_line = snapshot_set.index[old_key].original
-        new_line = current_set.index[new_key].original
-        output = f"{old_line} -> {new_line.split(':', 1)[1]} (~)"
-        if use_color:
-            print(_colorize(output, YELLOW), file=stdout)
-        else:
-            print(output, file=stdout)
+            # Show order change indicator
+            if file_diff.order_changed and not file_diff.count_changed:
+                order_msg = "  [order changed]"
+                if use_color:
+                    print(_colorize(order_msg, YELLOW), file=stdout)
+                else:
+                    print(order_msg, file=stdout)
+
+            # Print removed issues (in green)
+            for entry in file_diff.removed:
+                output = f"  - {entry.original}"
+                if use_color:
+                    print(_colorize(output, GREEN), file=stdout)
+                else:
+                    print(output, file=stdout)
+
+            # Print added issues (in red)
+            for entry in file_diff.added:
+                output = f"  + {entry.original}"
+                if use_color:
+                    print(_colorize(output, RED), file=stdout)
+                else:
+                    print(output, file=stdout)
 
     # Print summary to stderr
-    summary = (
-        f"summary: +{len(diff.added)} -{len(diff.removed)} ~{len(diff.moved)} "
-        f"(unchanged {diff.unchanged_count})"
-    )
+    summary_parts = [
+        f"+{diff.total_added}",
+        f"-{diff.total_removed}",
+        f"(unchanged {diff.total_unchanged})",
+    ]
+
+    if diff.files_with_changes > 0:
+        summary_parts.append(f"{diff.files_with_changes} file(s) with changes")
+
+    summary = f"summary: {' '.join(summary_parts)}"
     print(summary, file=stderr)

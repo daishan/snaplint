@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import sys
 from pathlib import Path
 
@@ -19,50 +20,80 @@ def mock_argv(monkeypatch, *args: str):
 
 @pytest.fixture
 def snapshot_file(tmp_path: Path) -> Path:
-    return tmp_path / "lint.snapshot.txt"
+    return tmp_path / "lint.snapshot.json"
+
+
+@pytest.fixture
+def test_file(tmp_path: Path) -> Path:
+    """Create a test Python file for snapshot tests."""
+    file = tmp_path / "file.py"
+    file.write_text("line1\nline2\n")
+    return file
 
 
 def test_cli_diff_no_new_issues(
     monkeypatch,
     snapshot_file,
+    test_file,
     capsys,
 ):
-    snapshot_content = "file.py:1:1: E001 msg1\n"
-    snapshot_file.write_text(snapshot_content)
-    mock_stdin(monkeypatch, text=snapshot_content)
+    # Write the snapshot by first creating it properly
+    input_content = f"{test_file}:1:1: E001 msg1\n"
+    mock_stdin(monkeypatch, text=input_content)
+    mock_argv(monkeypatch, "take-snapshot", str(snapshot_file))
+    
+    # Take the snapshot first
+    assert main() == 0
+    
+    # Now diff against the same input
+    mock_stdin(monkeypatch, text=input_content)
     mock_argv(monkeypatch, "diff", str(snapshot_file))
 
     return_code = main()
 
     assert return_code == 0
     captured = capsys.readouterr()
-    assert captured.out == ""
-    assert "summary: +0 -0 ~0 (unchanged 1)" in captured.err
+    # No changes should be shown
+    assert "summary: +0 -0 (unchanged 1)" in captured.err
 
 
 def test_cli_diff_new_issues(
     monkeypatch,
     snapshot_file,
+    test_file,
     capsys,
 ):
-    snapshot_file.write_text("file.py:1:1: E001 msg1\n")
-    mock_stdin(monkeypatch, text="file.py:2:1: E002 msg2\n")
+    # Take a snapshot with one error
+    input_content = f"{test_file}:1:1: E001 msg1\n"
+    mock_stdin(monkeypatch, text=input_content)
+    mock_argv(monkeypatch, "take-snapshot", str(snapshot_file))
+    assert main() == 0
+    
+    # Now diff with a different error
+    mock_stdin(monkeypatch, text=f"{test_file}:2:1: E002 msg2\n")
     mock_argv(monkeypatch, "diff", str(snapshot_file))
 
     return_code = main()
 
     assert return_code == 1
     captured = capsys.readouterr()
-    assert "file.py:2:1: E002 msg2 (+)" in captured.out
-    assert "summary: +1 -1 ~0 (unchanged 0)" in captured.err
+    assert f"+ {test_file}:2:1: E002 msg2" in captured.out
+    assert "summary: +1 -1" in captured.err
 
 
 def test_cli_diff_removed_issues(
     monkeypatch,
     snapshot_file,
+    test_file,
     capsys,
 ):
-    snapshot_file.write_text("file.py:1:1: E001 msg1\n")
+    # Take a snapshot with one error
+    input_content = f"{test_file}:1:1: E001 msg1\n"
+    mock_stdin(monkeypatch, text=input_content)
+    mock_argv(monkeypatch, "take-snapshot", str(snapshot_file))
+    assert main() == 0
+    
+    # Empty stdin
     mock_stdin(monkeypatch, text="")
     mock_argv(monkeypatch, "diff", str(snapshot_file))
 
@@ -70,8 +101,8 @@ def test_cli_diff_removed_issues(
 
     assert return_code == 0
     captured = capsys.readouterr()
-    assert "file.py:1:1: E001 msg1 (-)" in captured.out
-    assert "summary: +0 -1 ~0 (unchanged 0)" in captured.err
+    assert f"- {test_file}:1:1: E001 msg1" in captured.out
+    assert "summary: +0 -1" in captured.err
 
 
 def test_cli_usage_error_no_args(monkeypatch, capsys):
@@ -109,14 +140,20 @@ def test_cli_no_stdin(monkeypatch, snapshot_file, capsys):
 def test_cli_take_snapshot(
     monkeypatch,
     snapshot_file,
+    test_file,
     capsys,
 ):
-    input_content = "file.py:1:1: E001 msg1\n"
+    input_content = f"{test_file}:1:1: E001 msg1\n"
     mock_stdin(monkeypatch, text=input_content)
     mock_argv(monkeypatch, "take-snapshot", str(snapshot_file))
 
     return_code = main()
 
     assert return_code == 0
-    assert snapshot_file.read_text() == input_content
+    
+    # Verify snapshot is valid JSON
+    snapshot_data = json.loads(snapshot_file.read_text())
+    assert snapshot_data["version"] == "1"
+    assert len(snapshot_data["files"]) == 1
+    
     assert f"Snapshot written to {snapshot_file}" in capsys.readouterr().err

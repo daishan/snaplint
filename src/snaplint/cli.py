@@ -4,11 +4,11 @@ import argparse
 import sys
 from pathlib import Path
 
-from snaplint.diff import diff_issue_sets
+from snaplint.diff import diff_snapshot_files
 from snaplint.errors import SnaplintError, SnapshotReadError, UsageError
 from snaplint.models import RenderOptions
 from snaplint.render import render_diff
-from snaplint.snapshot import build_issue_set, read_snapshot
+from snaplint.snapshot import build_snapshot_file, read_snapshot, write_snapshot
 
 
 def main() -> int:
@@ -37,9 +37,6 @@ def _main() -> int:
     parser_diff.add_argument(
         "snapshot_path", type=Path, help="Path to the snapshot file."
     )
-    parser_diff.add_argument(
-        "--ref", type=str, help="Git ref to compare against for moved errors."
-    )
 
     # take-snapshot command
     parser_take_snapshot = subparsers.add_parser(
@@ -65,10 +62,13 @@ def _run_take_snapshot(args: argparse.Namespace) -> int:
         raise UsageError("stdin is empty. Pipe linter output to snaplint.")
 
     snapshot_path = args.snapshot_path
+
+    # Build snapshot from stdin
+    snapshot_file = build_snapshot_file(sys.stdin)
+
     try:
         with snapshot_path.open("w", encoding="utf-8") as f:
-            for line in sys.stdin:
-                f.write(line)
+            write_snapshot(snapshot_file, f)
     except OSError as e:
         raise SnapshotReadError(
             f"Could not write to snapshot file {snapshot_path}: {e}"
@@ -88,18 +88,17 @@ def _run_diff(args: argparse.Namespace) -> int:
 
     try:
         with snapshot_path.open("r", encoding="utf-8") as f:
-            snapshot_set = read_snapshot(f)
+            snapshot_file = read_snapshot(f)
     except OSError as e:
         raise SnapshotReadError(
             f"Could not read snapshot file {snapshot_path}: {e}"
         ) from e
 
-    current_set = build_issue_set(sys.stdin)
+    current_file = build_snapshot_file(sys.stdin)
 
-    diff_result = diff_issue_sets(
-        current=current_set,
-        snapshot=snapshot_set,
-        ref=args.ref,
+    diff_result = diff_snapshot_files(
+        current=current_file,
+        snapshot=snapshot_file,
     )
 
     render_options = RenderOptions(
@@ -109,14 +108,12 @@ def _run_diff(args: argparse.Namespace) -> int:
 
     render_diff(
         diff=diff_result,
-        current_set=current_set,
-        snapshot_set=snapshot_set,
         options=render_options,
         stdout=sys.stdout,
         stderr=sys.stderr,
     )
 
-    if diff_result.added:
+    if diff_result.total_added > 0:
         return 1  # New issues found
 
     return 0  # No new issues

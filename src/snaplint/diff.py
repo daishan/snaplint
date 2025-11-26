@@ -1,80 +1,114 @@
 from __future__ import annotations
 
-import subprocess
-
-from snaplint.models import DiffResult, IssueKey, IssueSet
+from snaplint.models import DiffResult, FileDiff, SnapshotEntry, SnapshotFile
 
 
-def _get_sort_key(k: IssueKey) -> tuple[str, int, int, str, str]:
-    return k.path, k.line, k.column, k.code or "", k.message or ""
+def _diff_file_snapshots(
+    current_entries: list[SnapshotEntry],
+    snapshot_entries: list[SnapshotEntry],
+    path: str,
+) -> FileDiff:
+    """Compare entries for a single file."""
+    # Build hash sets for comparison
+    current_hashes = {e.sha1 for e in current_entries}
+    snapshot_hashes = {e.sha1 for e in snapshot_entries}
+
+    # Build hash -> entry mappings
+    current_hash_map = {e.sha1: e for e in current_entries}
+    snapshot_hash_map = {e.sha1: e for e in snapshot_entries}
+
+    # Determine added and removed
+    added_hashes = current_hashes - snapshot_hashes
+    removed_hashes = snapshot_hashes - current_hashes
+    unchanged_hashes = current_hashes & snapshot_hashes
+
+    added_entries = tuple(
+        current_hash_map[h] for h in sorted(added_hashes, key=lambda h: current_hash_map[h].line)
+    )
+    removed_entries = tuple(
+        snapshot_hash_map[h] for h in sorted(removed_hashes, key=lambda h: snapshot_hash_map[h].line)
+    )
+
+    # Check if count changed - true if there are any additions or removals
+    count_changed = len(added_entries) > 0 or len(removed_entries) > 0
+
+    # Check if order changed (compare hash sequences for unchanged items)
+    current_sequence = [e.sha1 for e in current_entries if e.sha1 in unchanged_hashes]
+    snapshot_sequence = [e.sha1 for e in snapshot_entries if e.sha1 in unchanged_hashes]
+    order_changed = current_sequence != snapshot_sequence
+
+    return FileDiff(
+        path=path,
+        count_changed=count_changed,
+        order_changed=order_changed,
+        added=added_entries,
+        removed=removed_entries,
+        unchanged_count=len(unchanged_hashes),
+    )
 
 
-def diff_issue_sets(
-    current: IssueSet,
-    snapshot: IssueSet,
-    ref: str | None = None,
+def diff_snapshot_files(
+    current: SnapshotFile,
+    snapshot: SnapshotFile,
 ) -> DiffResult:
-    """Compare two issue sets and return the diff."""
-    added_keys = set(current.items - snapshot.items)
-    removed_keys = set(snapshot.items - current.items)
-    moved_keys: list[tuple[IssueKey, IssueKey]] = []
+    """Compare two snapshot files and return the diff."""
+    # Build file path -> FileSnapshot mappings
+    current_files = {fs.path: fs for fs in current.files}
+    snapshot_files = {fs.path: fs for fs in snapshot.files}
 
-    if ref:
-        # Create a map of removed issues indexed by (path, code, message)
-        removed_map: dict[tuple[str, str | None, str | None], list[IssueKey]] = {}
-        for key in removed_keys:
-            lookup_key = (key.path, key.code, key.message)
-            if lookup_key not in removed_map:
-                removed_map[lookup_key] = []
-            removed_map[lookup_key].append(key)
+    all_paths = set(current_files.keys()) | set(snapshot_files.keys())
 
-        still_added = set()
-        for added_key in added_keys:
-            lookup_key = (added_key.path, added_key.code, added_key.message)
-            if potential_matches := removed_map.get(lookup_key):
-                # Since the linter output is sorted, we can assume the first
-                # match is the correct one.
-                best_match = potential_matches[0]
+    file_diffs: list[FileDiff] = []
+    total_added = 0
+    total_removed = 0
+    total_unchanged = 0
+    files_with_changes = 0
 
-                try:
-                    # Get the content of the file from the ref
-                    snapshot_file_content = subprocess.check_output(
-                        ["git", "show", f"{ref}:{best_match.path}"], text=True
-                    )
-                    snapshot_lines = snapshot_file_content.splitlines()
-                    original_line_content = snapshot_lines[best_match.line - 1].strip()
+    for path in sorted(all_paths):
+        current_file = current_files.get(path)
+        snapshot_file = snapshot_files.get(path)
 
-                    # Get the content of the file from the current directory
-                    with open(added_key.path) as f:
-                        current_lines = f.readlines()
-                    current_line_content = current_lines[added_key.line - 1].strip()
+        if current_file is None:
+            # File only in snapshot (all removed)
+            file_diff = FileDiff(
+                path=path,
+                count_changed=True,
+                order_changed=False,
+                added=tuple(),
+                removed=snapshot_file.entries,
+                unchanged_count=0,
+            )
+        elif snapshot_file is None:
+            # File only in current (all added)
+            file_diff = FileDiff(
+                path=path,
+                count_changed=True,
+                order_changed=False,
+                added=current_file.entries,
+                removed=tuple(),
+                unchanged_count=0,
+            )
+        else:
+            # File in both
+            file_diff = _diff_file_snapshots(
+                current_entries=list(current_file.entries),
+                snapshot_entries=list(snapshot_file.entries),
+                path=path,
+            )
 
-                    if original_line_content == current_line_content:
-                        moved_keys.append((best_match, added_key))
-                        removed_keys.remove(best_match)
-                        potential_matches.pop(0)
-                        continue
+        # Only include files with changes
+        if file_diff.added or file_diff.removed or file_diff.order_changed:
+            file_diffs.append(file_diff)
+            files_with_changes += 1
 
-                except (
-                    subprocess.CalledProcessError,
-                    FileNotFoundError,
-                    IndexError,
-                ):
-                    # If git show fails, or the file doesn't exist, or the line
-                    # doesn't exist, we can't determine if the error moved.
-                    pass
-
-            still_added.add(added_key)
-        added_keys = still_added
-
-    # Sort keys for stable output
-    sorted_added = tuple(sorted(added_keys, key=_get_sort_key))
-    sorted_removed = tuple(sorted(removed_keys, key=_get_sort_key))
-    sorted_moved = tuple(sorted(moved_keys, key=lambda pair: _get_sort_key(pair[1])))
+        total_added += len(file_diff.added)
+        total_removed += len(file_diff.removed)
+        total_unchanged += file_diff.unchanged_count
 
     return DiffResult(
-        added=sorted_added,
-        removed=sorted_removed,
-        moved=sorted_moved,
-        unchanged_count=len(current.items & snapshot.items),
+        file_diffs=tuple(file_diffs),
+        total_added=total_added,
+        total_removed=total_removed,
+        total_unchanged=total_unchanged,
+        files_with_changes=files_with_changes,
     )
