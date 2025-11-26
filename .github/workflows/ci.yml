@@ -39,3 +39,38 @@ jobs:
       - name: Test with pytest
         run: |
           uv run pytest
+
+  tag-release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from pyproject.toml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "v${{ steps.get_version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create and push tag
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.get_version.outputs.tag }}" -m "Release ${{ steps.get_version.outputs.tag }}"
+          git push origin "${{ steps.get_version.outputs.tag }}"
