@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from importlib.metadata import version as get_version
 from pathlib import Path
 
 from snaplint.diff import diff_snapshot_files
@@ -76,7 +77,7 @@ def _main() -> int:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        version="%(prog)s 0.1.1"
+        version=f"%(prog)s {get_version('snaplint')}"
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
