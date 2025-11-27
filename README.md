@@ -119,6 +119,36 @@ Add to `.pre-commit-config.yaml`:
 
 Unrecognized lines are skipped with a warning to stderr.
 
+## Working with Older Python Versions
+
+If your project needs to support older Python versions (e.g., Python 3.8) but `snaplint` requires Python 3.10+, you can run the linter with your target Python version and `snaplint` with a newer interpreter:
+
+```bash
+# Run linter with Python 3.8
+python3.8 -m flake8 src/ > /tmp/lint_output.txt
+
+# Process with snaplint using Python 3.10+
+python3.10 -m snaplint take-snapshot < /tmp/lint_output.txt
+python3.10 -m snaplint diff < /tmp/lint_output.txt
+```
+
+Or use separate virtual environments:
+
+```bash
+# Create venv for linting with old Python
+python3.8 -m venv .venv-lint
+.venv-lint/bin/pip install flake8
+
+# Create venv for snaplint with new Python
+python3.10 -m venv .venv-snaplint
+.venv-snaplint/bin/pip install snaplint
+
+# Use them together
+.venv-lint/bin/flake8 src/ | .venv-snaplint/bin/snaplint diff
+```
+
+This approach lets you maintain compatibility with older Python versions in your codebase while using modern tooling for CI/CD workflows.
+
 ## Development
 
 ### Setup
