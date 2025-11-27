@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "snaplint"
-version = "0.4.0"
+version = "0.4.1"
 description = "Snapshot linter errors and track only new issues — perfect for incremental linter adoption on large codebases"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
   { name = "GENWAY AI", email = "contact@genway.ai" },
@@ -38,6 +38,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
   "Topic :: Software Development :: Quality Assurance",
@@ -45,7 +46,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "pydantic>=2",
+  "pydantic>=2.12",
 ]
 
 [project.optional-dependencies]
