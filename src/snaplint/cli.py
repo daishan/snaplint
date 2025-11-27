@@ -98,6 +98,11 @@ def _main() -> int:
             "and uses .snaplint/snapshot.<linter>.json"
         ),
     )
+    parser_diff.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show removed errors in addition to added errors",
+    )
 
     # take-snapshot command
     parser_take_snapshot = subparsers.add_parser(
@@ -209,6 +214,7 @@ def _run_diff(args: argparse.Namespace) -> int:
     render_options = RenderOptions(
         stdout_is_tty=sys.stdout.isatty(),
         color_enabled=True,  # Always true, render function checks tty
+        verbose=args.verbose,
     )
 
     render_diff(

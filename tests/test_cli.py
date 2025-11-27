@@ -77,7 +77,7 @@ def test_cli_diff_new_issues(
 
     assert return_code == 1
     captured = capsys.readouterr()
-    assert f"+ {test_file}:2:1: E002 msg2" in captured.out
+    assert f"{test_file}:2:1: E002 msg2 (+)" in captured.out
     assert "summary: +1 -1" in captured.err
 
 
@@ -101,7 +101,33 @@ def test_cli_diff_removed_issues(
 
     assert return_code == 0
     captured = capsys.readouterr()
-    assert f"- {test_file}:1:1: E001 msg1" in captured.out
+    # Removed errors are not shown by default
+    assert f"{test_file}:1:1: E001 msg1 (-)" not in captured.out
+    assert "summary: +0 -1" in captured.err
+
+
+def test_cli_diff_removed_issues_verbose(
+    monkeypatch,
+    snapshot_file,
+    test_file,
+    capsys,
+):
+    # Take a snapshot with one error
+    input_content = f"{test_file}:1:1: E001 msg1\n"
+    mock_stdin(monkeypatch, text=input_content)
+    mock_argv(monkeypatch, "take-snapshot", str(snapshot_file))
+    assert main() == 0
+
+    # Empty stdin with verbose flag
+    mock_stdin(monkeypatch, text="")
+    mock_argv(monkeypatch, "diff", str(snapshot_file), "--verbose")
+
+    return_code = main()
+
+    assert return_code == 0
+    captured = capsys.readouterr()
+    # Removed errors are shown in verbose mode
+    assert f"{test_file}:1:1: E001 msg1 (-)" in captured.out
     assert "summary: +0 -1" in captured.err
 
 

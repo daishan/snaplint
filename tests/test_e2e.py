@@ -140,7 +140,7 @@ def calculate(a, b):
     )
     assert returncode == 0  # No new issues (only removed)
     assert "summary: +0 -" in stderr  # Should show removed errors
-    assert "-" in stdout  # Should show removed lines
+    # Removed errors are not shown by default (need --verbose)
 
     # Step 4: Introduce a new error
     utils_file = project_dir / "src" / "utils.py"

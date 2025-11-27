@@ -154,3 +154,4 @@ class RenderOptions(BaseModel):
     stdout_is_tty: bool
     color_enabled: bool
     sort: bool = True
+    verbose: bool = False

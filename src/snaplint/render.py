@@ -28,47 +28,22 @@ def render_diff(
 
     # Process each file with changes
     for file_diff in diff.file_diffs:
-        # Print file header if there are changes
-        if file_diff.added or file_diff.removed or file_diff.order_changed:
-            header = f"\n{file_diff.path}:"
-            if use_color:
-                print(_colorize(header, BLUE), file=stdout)
-            else:
-                print(header, file=stdout)
-
-            # Show count change indicator
-            if file_diff.count_changed:
-                old_count = file_diff.unchanged_count + len(file_diff.removed)
-                new_count = file_diff.unchanged_count + len(file_diff.added)
-                count_msg = f"  [count changed: {old_count} -> {new_count}]"
-                if use_color:
-                    print(_colorize(count_msg, YELLOW), file=stdout)
-                else:
-                    print(count_msg, file=stdout)
-
-            # Show order change indicator
-            if file_diff.order_changed and not file_diff.count_changed:
-                order_msg = "  [order changed]"
-                if use_color:
-                    print(_colorize(order_msg, YELLOW), file=stdout)
-                else:
-                    print(order_msg, file=stdout)
-
-            # Print removed issues (in green)
+        # Print removed issues only in verbose mode (in green with - suffix)
+        if options.verbose:
             for entry in file_diff.removed:
-                output = f"  - {entry.original}"
+                output = f"{entry.original} (-)"
                 if use_color:
                     print(_colorize(output, GREEN), file=stdout)
                 else:
                     print(output, file=stdout)
 
-            # Print added issues (in red)
-            for entry in file_diff.added:
-                output = f"  + {entry.original}"
-                if use_color:
-                    print(_colorize(output, RED), file=stdout)
-                else:
-                    print(output, file=stdout)
+        # Print added issues (in red with + suffix)
+        for entry in file_diff.added:
+            output = f"{entry.original} (+)"
+            if use_color:
+                print(_colorize(output, RED), file=stdout)
+            else:
+                print(output, file=stdout)
 
     # Print summary to stderr
     summary_parts = [
