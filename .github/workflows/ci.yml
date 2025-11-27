@@ -27,6 +27,9 @@ jobs:
           pip install uv
           uv venv
           uv pip install -e .[dev]
+      - name: Check uv.lock is up-to-date
+        run: |
+          uv lock --check
       - name: Lint with ruff
         run: |
           uv run ruff check src
