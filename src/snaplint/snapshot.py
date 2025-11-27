@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import sys
+from collections import defaultdict
 from pathlib import Path
 from typing import IO, Iterable
 
@@ -16,6 +18,71 @@ from snaplint.models import (
     SnapshotFile,
 )
 from snaplint.parse import get_issue_key, parse_lines
+
+
+def _read_lines_sync(path: Path, line_numbers: list[int]) -> dict[int, str]:
+    """Read specific lines from a file synchronously.
+
+    Returns a dict mapping line_number -> line_content.
+    Line 0 returns a special file-level marker.
+    """
+    result: dict[int, str] = {}
+
+    # Handle file-level errors (line 0)
+    if 0 in line_numbers:
+        result[0] = f"<file-level:{path}>"
+
+    # Read actual lines if needed
+    actual_lines = [ln for ln in line_numbers if ln > 0]
+    if not actual_lines:
+        return result
+
+    try:
+        if not path.exists():
+            return result
+
+        with path.open("r", encoding="utf-8") as f:
+            all_lines = f.readlines()
+            for line_num in actual_lines:
+                if 0 < line_num <= len(all_lines):
+                    result[line_num] = all_lines[line_num - 1].strip()
+    except (OSError, UnicodeDecodeError):
+        pass
+
+    return result
+
+
+async def _read_all_source_lines_async(
+    issues: list[IssueLine],
+) -> dict[tuple[str, int], str]:
+    """Read all source lines needed for issues in parallel.
+
+    Returns a dict mapping (file_path, line_number) -> line_content.
+    """
+    # Group line numbers by file path
+    path_to_lines: dict[Path, list[int]] = defaultdict(list)
+    for issue in issues:
+        path = Path(issue.path)
+        path_to_lines[path].append(issue.line)
+
+    # Read all files in parallel using thread pool
+    async def read_one_file(
+        path: Path, line_nums: list[int]
+    ) -> tuple[Path, dict[int, str]]:
+        lines = await asyncio.to_thread(_read_lines_sync, path, line_nums)
+        return (path, lines)
+
+    results = await asyncio.gather(
+        *[read_one_file(path, line_nums) for path, line_nums in path_to_lines.items()]
+    )
+
+    # Build final lookup dict: (str_path, line_num) -> content
+    lookup: dict[tuple[str, int], str] = {}
+    for path, lines_dict in results:
+        for line_num, content in lines_dict.items():
+            lookup[(str(path), line_num)] = content
+
+    return lookup
 
 
 def _read_source_line(file_path: str, line_number: int) -> str | None:
@@ -47,9 +114,16 @@ def _compute_sha1(error_identifier: str, source_line: str) -> str:
     return hashlib.sha1(content.encode("utf-8")).hexdigest()
 
 
-def _issue_to_snapshot_entry(issue: IssueLine) -> SnapshotEntry | None:
-    """Convert an IssueLine to a SnapshotEntry with SHA1 hash."""
-    source_line = _read_source_line(issue.path, issue.line)
+def _issue_to_snapshot_entry(
+    issue: IssueLine, source_lines: dict[tuple[str, int], str]
+) -> SnapshotEntry | None:
+    """Convert an IssueLine to a SnapshotEntry with SHA1 hash.
+
+    Args:
+        issue: The issue to convert
+        source_lines: Pre-fetched source lines lookup dict
+    """
+    source_line = source_lines.get((issue.path, issue.line))
     if source_line is None:
         # Can't compute hash without source line, skip this entry
         return None
@@ -99,10 +173,13 @@ def build_snapshot_file(lines: Iterable[str]) -> SnapshotFile:
         elif isinstance(result, IssueLine):
             issues.append(result)
 
+    # Read all source lines in parallel
+    source_lines = asyncio.run(_read_all_source_lines_async(issues))
+
     # Group by file path
     files_dict: dict[str, list[SnapshotEntry]] = {}
     for issue in issues:
-        entry = _issue_to_snapshot_entry(issue)
+        entry = _issue_to_snapshot_entry(issue, source_lines)
         if entry is None:
             print(
                 f"snaplint: warning: could not read source for "
