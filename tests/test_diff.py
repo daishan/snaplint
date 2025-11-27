@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from io import StringIO
 
 from snaplint.diff import diff_snapshot_files
 from snaplint.snapshot import build_snapshot_file
@@ -86,12 +85,11 @@ def test_diff_empty_snapshot(tmp_path: Path):
     file1.write_text("line1\n")
 
     file_path = str(file1)
-    snapshot_lines = []
     current_lines = [f"{file_path}:1:1: E001 msg1"]
 
     from snaplint.models import SnapshotFile
 
-    snapshot_file = SnapshotFile(files=tuple())
+    snapshot_file = SnapshotFile(files=())
     current_file = build_snapshot_file(current_lines)
 
     diff = diff_snapshot_files(current=current_file, snapshot=snapshot_file)
@@ -108,12 +106,11 @@ def test_diff_empty_current(tmp_path: Path):
 
     file_path = str(file1)
     snapshot_lines = [f"{file_path}:1:1: E001 msg1"]
-    current_lines = []
 
     snapshot_file = build_snapshot_file(snapshot_lines)
     from snaplint.models import SnapshotFile
 
-    current_file = SnapshotFile(files=tuple())
+    current_file = SnapshotFile(files=())
 
     diff = diff_snapshot_files(current=current_file, snapshot=snapshot_file)
 

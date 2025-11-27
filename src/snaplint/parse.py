@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
-from typing import Final, Iterable, Iterator, Pattern
+from collections.abc import Iterable, Iterator
+from re import Pattern
+from typing import Final
 
 from snaplint.errors import ParseWarning
 from snaplint.models import IssueKey, IssueLine

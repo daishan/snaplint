@@ -5,8 +5,9 @@ import hashlib
 import json
 import sys
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
-from typing import IO, Iterable
+from typing import IO
 
 from snaplint.errors import ParseWarning, SnapshotReadError
 from snaplint.models import (

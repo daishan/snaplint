@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "snaplint"
-version = "0.4.1"
+version = "0.4.2"
 description = "Snapshot linter errors and track only new issues — perfect for incremental linter adoption on large codebases"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -80,6 +80,9 @@ line-length = 88
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4"]
 ignore = ["B905"] # `zip()` without `strict=`. In this project, the inputs are trusted.
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["E501"]  # Allow long lines in test files
 
 [tool.mypy]
 strict = true
