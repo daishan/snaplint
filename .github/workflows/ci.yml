@@ -28,19 +28,27 @@ jobs:
           uv venv
           uv pip install -e .[dev]
         env:
-          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ matrix.python-version == '3.14' && '1' || '' }}
       - name: Lint with ruff
         run: |
           uv run ruff check src
+        env:
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ matrix.python-version == '3.14' && '1' || '' }}
       - name: Check code format with black
         run: |
           uv run black --check src tests
+        env:
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ matrix.python-version == '3.14' && '1' || '' }}
       - name: Type check with mypy
         run: |
           uv run mypy --strict src
+        env:
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ matrix.python-version == '3.14' && '1' || '' }}
       - name: Test with pytest
         run: |
           uv run pytest
+        env:
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ matrix.python-version == '3.14' && '1' || '' }}
 
   tag-release:
     needs: build
