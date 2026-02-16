@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from importlib.metadata import version as get_version
 from pathlib import Path
@@ -11,16 +12,102 @@ from snaplint.models import RenderOptions
 from snaplint.render import render_diff
 from snaplint.snapshot import build_snapshot_file, read_snapshot, write_snapshot
 
+# Ruff summary line patterns (appear at end of output)
+# Examples:
+#   "Found 8 errors."
+#   "[*] 6 fixable with the `--fix` option."
+RUFF_SUMMARY_RE = re.compile(
+    r"^(Found \d+ errors?\.|\[\*\] \d+ fixable with the .--fix. option\.)"
+)
+
+
+def _looks_like_lint_code(text: str) -> bool:
+    """Check if text looks like a linter error code (e.g., F401, E501, W293).
+
+    A lint code typically starts with a letter and contains at least one digit.
+    """
+    if not text or len(text) < 2:
+        return False
+    return text[0].isalpha() and any(c.isdigit() for c in text)
+
+
+def _has_flake8_style_error(line: str) -> bool:
+    """Check if a line matches flake8-style format: path:line:col: CODE message."""
+    parts = line.split(":")
+    if len(parts) < 4:
+        return False
+
+    try:
+        int(parts[1])  # line number
+        int(parts[2])  # column number
+    except (ValueError, IndexError):
+        return False
+
+    code_part = parts[3].strip()
+    if not code_part:
+        return False
+
+    first_word = code_part.split()[0] if code_part.split() else ""
+    return _looks_like_lint_code(first_word)
+
+
+def _has_ruff_autofix_marker(line: str) -> bool:
+    """Check if a line has Ruff's [*] auto-fix marker in the correct position.
+
+    Ruff format: path:line:col: CODE [*] message
+    The [*] marker appears immediately after the error code.
+    """
+    parts = line.split(":")
+    if len(parts) < 4:
+        return False
+
+    try:
+        int(parts[1])  # line number
+        int(parts[2])  # column number
+    except (ValueError, IndexError):
+        return False
+
+    # Get the message part after "path:line:col: "
+    code_and_msg = parts[3].strip()
+    if not code_and_msg:
+        return False
+
+    # Split into code and message, check if message starts with [*]
+    words = code_and_msg.split(maxsplit=1)
+    if len(words) < 2:
+        return False
+
+    code, msg = words[0], words[1]
+    if not _looks_like_lint_code(code):
+        return False
+
+    return msg.lstrip().startswith("[*]")
+
 
 def _detect_linter_from_lines(lines: list[str]) -> str:
-    """Detect the linter type from the first few lines of output.
+    """Detect the linter type from the output lines.
 
-    Returns a linter name like 'flake8', 'mypy', 'pylint', or 'generic'.
+    Returns a linter name like 'ruff', 'flake8', 'mypy', 'pylint', or 'generic'.
+
+    Ruff is detected by its distinctive summary lines at the end:
+    - "Found X errors."
+    - "[*] X fixable with the --fix option."
     """
-    for line in lines[:10]:  # Check first 10 lines
+    has_flake8_style_errors = False
+
+    for line in lines:
         line = line.strip()
         if not line:
             continue
+
+        # Check for Ruff summary lines (most reliable detection)
+        if RUFF_SUMMARY_RE.match(line):
+            return "ruff"
+
+        # Check for [*] marker in error lines (Ruff auto-fix indicator)
+        # The marker appears right after the error code: "CODE [*] message"
+        if _has_ruff_autofix_marker(line):
+            return "ruff"
 
         # Check for mypy patterns
         if ": error:" in line or ": warning:" in line or ": note:" in line:
@@ -31,24 +118,13 @@ def _detect_linter_from_lines(lines: list[str]) -> str:
         if "************* Module" in line:
             return "pylint"
 
-        # Check for flake8 patterns (most common: path:line:col: CODE message)
-        parts = line.split(":")
-        if len(parts) >= 4:
-            try:
-                int(parts[1])  # line number
-                int(parts[2])  # column number
-                # Check if the next part starts with a code (letter + number)
-                code_part = parts[3].strip()
-                if code_part and len(code_part) > 0:
-                    first_word = code_part.split()[0]
-                    if first_word and len(first_word) >= 3:
-                        # Check if it looks like a code
-                        has_letter = first_word[0].isalpha()
-                        has_digit = any(c.isdigit() for c in first_word)
-                        if has_letter and has_digit:
-                            return "flake8"
-            except (ValueError, IndexError):
-                pass
+        # Check for flake8/ruff style errors (path:line:col: CODE message)
+        if _has_flake8_style_error(line):
+            has_flake8_style_errors = True
+
+    # If we found flake8-style errors but no Ruff indicators, it's flake8
+    if has_flake8_style_errors:
+        return "flake8"
 
     return "generic"
 

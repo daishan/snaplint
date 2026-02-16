@@ -9,8 +9,11 @@ from snaplint.errors import ParseWarning
 from snaplint.models import IssueKey, IssueLine
 
 # Regexes for different linter formats
-# flake8: path/to/file.py:LINE:COL: CODE Message
-FLAKE8_RE: Final[Pattern[str]] = re.compile(
+# flake8/ruff: path/to/file.py:LINE:COL: CODE Message
+# Both tools share the same output format. At the line level, Ruff is detected
+# by its [*] marker for auto-fixable issues (appears at start of message).
+# At the stream level, Ruff is detected by its summary lines.
+FLAKE8_RUFF_RE: Final[Pattern[str]] = re.compile(
     r"^(?P<path>(?:\./)?[^:]+):(?P<line>\d+):(?P<col>\d+): "
     r"(?P<code>[A-Z]+\d+) (?P<msg>.+)$"
 )
@@ -49,16 +52,24 @@ def _parse_line(line: str) -> IssueLine | None:
     if not line:
         return None
 
-    # Flake8
-    if match := FLAKE8_RE.match(line):
+    # Check for Flake8/Ruff format (they share the same output format)
+    # At the individual line level, Ruff is detected by [*] marker at start of message
+    # For stream-level detection, see cli._detect_linter_from_lines
+    if match := FLAKE8_RUFF_RE.match(line):
+        code = str(match.group("code"))
+        msg = match.group("msg")
+
+        # Ruff adds [*] marker for auto-fixable issues, immediately after the code
+        is_ruff = msg.lstrip().startswith("[*]")
+
         return IssueLine(
             original=line,
-            tool="flake",
+            tool="ruff" if is_ruff else "flake",
             path=str(match.group("path")),
             line=int(match.group("line")),
             column=int(match.group("col")),
-            code=str(match.group("code")),
-            message=_normalize_message(match.group("msg")),
+            code=code,
+            message=_normalize_message(msg),
         )
 
     # Mypy
