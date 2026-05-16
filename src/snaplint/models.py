@@ -51,7 +51,7 @@ class IssueLine(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     original: StrictStr
-    tool: Literal["flake", "ruff", "mypy", "pylint", "unknown"]
+    tool: Literal["flake", "ruff", "mypy", "pylint", "pyrefly", "unknown"]
     path: NormalizedPath
     line: NonNegativeInt
     column: NonNegativeInt = 0

@@ -117,6 +117,7 @@ Add to `.pre-commit-config.yaml`:
 - **flake8** and compatible tools (flake9, etc.)
 - **mypy**
 - **pylint**
+- **pyrefly** (use `--output-format min-text`)
 - **Generic format** — any tool outputting `path:line:col: message`
 
 Unrecognized lines are skipped with a warning to stderr.

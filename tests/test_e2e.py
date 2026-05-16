@@ -850,3 +850,140 @@ x: int = greet("hello")  # type error
     assert result.returncode == 0
     assert "Auto-detected linter: mypy" in result.stderr
     assert "summary: +0 -0" in result.stderr
+
+# ============================================================================
+# Pyrefly linter tests
+# ============================================================================
+
+# def foo() -> str:
+#     return 5
+
+def run_pyrefly(project_dir: Path, target: Path | None = None) -> str:
+    """Run pyrefly on the project and return output."""
+    target_path = target or (project_dir / "src")
+    print(f"dbg: {target_path}", flush=True)
+    try:
+        result = subprocess.run(
+            ["pyrefly", "check", "--output-format=min-text", str(target_path)],
+            capture_output=True,
+            text=True,
+            cwd=project_dir,
+        )
+        return result.stdout
+    except FileNotFoundError:
+        pytest.fail("pyrefly not installed")
+
+
+def test_e2e_pyrefly_full_workflow(project_dir: Path):
+    """Test complete workflow with pyrefly: take snapshot, modify code, diff changes."""
+    snapshot_file = project_dir / "lint.snapshot.json.gz"
+
+    # create empty config (without it pyrefly doesn't report these errors)
+    (project_dir / "src" / "pyrefly.toml").write_text("")
+    # Create files with type errors
+    (project_dir / "src" / "typed.py").write_text("""
+def add_numbers(a: int, b: int) -> int:
+    return a + b
+
+def broken_types(x: str) -> int:
+    return x  # type error: returning str instead of int
+
+result: str = add_numbers(1, 2)  # type error: assigning int to str
+""")
+
+    # Step 1: Run pyrefly and take initial snapshot
+    initial_lint_output = run_pyrefly(project_dir)
+    assert initial_lint_output  # Should have some type errors
+
+    returncode, stdout, stderr = run_snaplint(
+        project_dir, "take-snapshot", snapshot_file, stdin=initial_lint_output
+    )
+    assert returncode == 0
+    assert snapshot_file.exists()
+    assert "Snapshot written" in stderr
+
+    # Verify snapshot is valid JSON
+    import json
+
+    with gzip.open(snapshot_file, "rt", encoding="utf-8") as f:
+        snapshot_data = json.load(f)
+    assert snapshot_data["version"] == "1"
+    assert len(snapshot_data["files"]) > 0
+
+    # Step 2: Run diff with same output - should show no changes
+    returncode, stdout, stderr = run_snaplint(
+        project_dir, "diff", snapshot_file, stdin=initial_lint_output
+    )
+    assert returncode == 0  # No new issues
+    assert "summary: +0 -0" in stderr
+
+    # Step 3: Fix one type error
+    (project_dir / "src" / "typed.py").write_text("""
+def add_numbers(a: int, b: int) -> int:
+    return a + b
+
+def broken_types(x: str) -> int:
+    return x  # type error: returning str instead of int
+
+result: int = add_numbers(1, 2)  # Fixed: now correctly typed as int
+""")
+
+    # Run linter again and diff
+    new_lint_output = run_pyrefly(project_dir)
+    returncode, stdout, stderr = run_snaplint(
+        project_dir, "diff", snapshot_file, stdin=new_lint_output
+    )
+    assert returncode == 0  # No new issues (only removed)
+    assert "summary: +0 -" in stderr  # Should show removed errors
+
+
+def test_e2e_pyrefly_auto_detect_linter(project_dir: Path):
+    """Test that pyrefly output is auto-detected and uses correct snapshot filename."""
+    # Use a separate directory to avoid interference
+    isolated_dir = project_dir / "pyrefly_test"
+    isolated_dir.mkdir()
+    test_file = isolated_dir / "test.py"
+
+    # create empty config (without it pyrefly doesn't report these errors)
+    (isolated_dir / "pyrefly.toml").write_text("")
+    # Create file with type errors
+    test_file.write_text("""
+def greet(name: str) -> str:
+    return name
+
+x: int = greet("hello")  # type error
+""")
+
+    # Run pyrefly
+    lint_output = run_pyrefly(project_dir, isolated_dir)
+    assert lint_output  # Should have type errors
+
+    # Take snapshot without specifying path (auto-detect)
+    result = subprocess.run(
+        [sys.executable, "-m", "snaplint.cli", "take-snapshot"],
+        input=lint_output,
+        capture_output=True,
+        text=True,
+        cwd=project_dir,
+    )
+    assert result.returncode == 0
+    assert "Auto-detected linter: pyrefly" in result.stderr
+
+    # Verify the snapshot file was created with the correct name
+    expected_snapshot = project_dir / ".snaplint" / "snapshot.pyrefly.json.gz"
+    assert expected_snapshot.exists(), (
+        f"Expected snapshot at {expected_snapshot}, "
+        f"got files: {list((project_dir / '.snaplint').iterdir()) if (project_dir / '.snaplint').exists() else 'no .snaplint dir'}"
+    )
+
+    # Diff should also auto-detect pyrefly
+    result = subprocess.run(
+        [sys.executable, "-m", "snaplint.cli", "diff"],
+        input=lint_output,
+        capture_output=True,
+        text=True,
+        cwd=project_dir,
+    )
+    assert result.returncode == 0
+    assert "Auto-detected linter: pyrefly" in result.stderr
+    assert "summary: +0 -0" in result.stderr

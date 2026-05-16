@@ -87,7 +87,8 @@ def _has_ruff_autofix_marker(line: str) -> bool:
 def _detect_linter_from_lines(lines: list[str]) -> str:
     """Detect the linter type from the output lines.
 
-    Returns a linter name like 'ruff', 'flake8', 'mypy', 'pylint', or 'generic'.
+    Returns a linter name like 'ruff', 'flake8', 'mypy', 'pylint', 'pyrefly',
+    or 'generic'.
 
     Ruff is detected by its distinctive summary lines at the end:
     - "Found X errors."
@@ -121,6 +122,10 @@ def _detect_linter_from_lines(lines: list[str]) -> str:
         # Check for flake8/ruff style errors (path:line:col: CODE message)
         if _has_flake8_style_error(line):
             has_flake8_style_errors = True
+
+        # pyrefly lines start with ERROR
+        if line.startswith("ERROR "):
+            return "pyrefly"
 
     # If we found flake8-style errors but no Ruff indicators, it's flake8
     if has_flake8_style_errors:

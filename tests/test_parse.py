@@ -88,6 +88,31 @@ from snaplint.parse import parse_lines
                 message="Some custom linter message",
             ),
         ),
+        # pyrefly
+        (
+            "ERROR foo/bar.py:11:27-44: Object of class `StubObject` has no attribute `core_id` [missing-attribute]",
+            IssueLine(
+                original="ERROR foo/bar.py:11:27-44: Object of class `StubObject` has no attribute `core_id` [missing-attribute]",
+                tool="pyrefly",
+                path="foo/bar.py",
+                line=11,
+                column=27,
+                code=None,
+                message="Object of class `StubObject` has no attribute `core_id` [missing-attribute]",
+            ),
+        ),
+        (
+            "ERROR foo/bar.py:77:9-78:18: Object of class `Manager` has no attribute `language` [missing-attribute]",
+            IssueLine(
+                original="ERROR foo/bar.py:77:9-78:18: Object of class `Manager` has no attribute `language` [missing-attribute]",
+                tool="pyrefly",
+                path="foo/bar.py",
+                line=77,
+                column=9,
+                code=None,
+                message="Object of class `Manager` has no attribute `language` [missing-attribute]",
+            ),
+        ),
         # Flake8 with leading ./ and line 0
         (
             "./src/snaplint/cli.py:0:1: F401 'sys' imported but unused",

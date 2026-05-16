@@ -35,6 +35,15 @@ PYLINT_RE2: Final[Pattern[str]] = re.compile(
     r"(?P<msg>.+)$"
 )
 
+# pyrefly --output-format min-text
+# LEVEL path/to/file.py:LINE:COL-STOPCOL: MESSAGE [ERROR-TYPE]
+# LEVEL path/to/file.py:LINE:COL-STOPLINE:STOPCOL: MESSAGE [ERROR-TYPE]
+PYREFLY_MIN_TEXT_RE: Final[Pattern[str]] = re.compile(
+    r"^(?P<level>[A-Z]+) (?P<path>[^:]+):(?P<line>\d+):"
+    r"(?P<col>\d+)-(?:(?P<stop_line>\d+):)?(?P<stop_col>\d+): "
+    r"(?P<msg>.+)$"
+)
+
 # Generic: path:line[:col]: message
 GENERIC_RE: Final[Pattern[str]] = re.compile(
     r"^(?P<path>[^:]+):(?P<line>\d+):(?:(?P<col>\d+):)? (?P<msg>.+)$"
@@ -106,6 +115,17 @@ def _parse_line(line: str) -> IssueLine | None:
             line=int(match.group("line")),
             column=0,  # Column is not available in this format
             code=str(match.group("code")),
+            message=_normalize_message(match.group("msg")),
+        )
+
+    # Pyrefly --output-format min-text
+    if match := PYREFLY_MIN_TEXT_RE.match(line):
+        return IssueLine(
+            original=line,
+            tool="pyrefly",
+            path=str(match.group("path")),
+            line=int(match.group("line")),
+            column=int(match.group("col")),
             message=_normalize_message(match.group("msg")),
         )
 
